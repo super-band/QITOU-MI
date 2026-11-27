@@ -40,6 +40,22 @@ class CoreParsingTest {
     }
 
     @Test
+    fun parsesCfmotoQrWithPercentEncodedMac() {
+        // 仪表二维码原始内容（冒号以 %3A 编码，未经过扫码工具解码）
+        val vehicle = MotoVehicle.parse(
+            "https://c.cfmoto.com/app/download.html?modelid=37416&sn=gYTG&action=9&" +
+                "ssid=CFMOTO-18ccd1&pwd=20d3024968&auth=wpa2-psk&" +
+                "mac=6C%3AF5%3A4A%3A14%3A8E%3AB5&name=CFMOTO-18ccd1",
+        )
+
+        assertNotNull(vehicle)
+        assertEquals("CFMOTO-18ccd1", vehicle!!.ssid)
+        assertEquals("20d3024968", vehicle.password)
+        assertEquals("6c:f5:4a:14:8e:b5", vehicle.mac)
+        assertEquals("gYTG", vehicle.sn)
+    }
+
+    @Test
     fun parsesMotoMoriniHashSeparatedQr() {
         val vehicle = MotoVehicle.parse(
             "http://admin.motomorini.com/app.html?Wifi=ML174167#12345678#dc0d30da1b6c" +

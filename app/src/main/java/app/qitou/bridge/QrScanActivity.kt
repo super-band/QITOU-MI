@@ -3,6 +3,7 @@ package app.qitou.bridge
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.InputType
@@ -42,6 +43,11 @@ class QrScanActivity : ComponentActivity() {
             showCameraPermissionRecovery()
         }
     }
+    private val photoPicker = registerForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) decodeFromUri(uri)
+    }
     @Volatile private var busy = false
     @Volatile private var busyAt = 0L
     @Volatile private var saving = false
@@ -55,7 +61,7 @@ class QrScanActivity : ComponentActivity() {
         window.isNavigationBarContrastEnforced = false
         previewView = PreviewView(this)
         status = TextView(this).apply {
-            text = "对准仪表上的 MotoPlay 配对二维码；识别不到可点右上角「粘贴文本」"
+            text = "对准仪表上的 MotoPlay 配对二维码；识别不到可用右上角「选照片」或「粘贴文本」"
             setTextColor(Color.WHITE)
             textSize = 18f
             gravity = Gravity.CENTER
@@ -74,14 +80,24 @@ class QrScanActivity : ComponentActivity() {
             }, FrameLayout.LayoutParams(180, 105, Gravity.TOP or Gravity.START).apply {
                 topMargin = (48 * resources.displayMetrics.density).toInt()
             })
+            val sideMargin = (48 * resources.displayMetrics.density).toInt()
+            addView(Button(this@QrScanActivity).apply {
+                text = "选照片"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.argb(175, 12, 18, 26))
+                setOnClickListener { photoPicker.launch("image/*") }
+            }, FrameLayout.LayoutParams(240, 115, Gravity.TOP or Gravity.END).apply {
+                topMargin = sideMargin
+            })
             addView(Button(this@QrScanActivity).apply {
                 text = "粘贴文本"
                 isAllCaps = false
                 setTextColor(Color.WHITE)
                 setBackgroundColor(Color.argb(175, 12, 18, 26))
                 setOnClickListener { showPasteDialog() }
-            }, FrameLayout.LayoutParams(220, 105, Gravity.TOP or Gravity.END).apply {
-                topMargin = (48 * resources.displayMetrics.density).toInt()
+            }, FrameLayout.LayoutParams(240, 115, Gravity.TOP or Gravity.END).apply {
+                topMargin = sideMargin + 125
             })
             addView(status, FrameLayout.LayoutParams(-1, 160, Gravity.BOTTOM))
         })
@@ -187,7 +203,13 @@ class QrScanActivity : ComponentActivity() {
         }
     }
 
-    private fun handleBarcodes(barcodes: List<Barcode>) {
+    private fun handleBarcodes(barcodes: List<Barcode>, fromPhoto: Boolean = false) {
+        if (barcodes.isEmpty()) {
+            if (fromPhoto) {
+                status.text = "照片中未找到二维码，请换一张更清晰的照片。"
+            }
+            return
+        }
         var rejected: String? = null
         for (barcode in barcodes) {
             val raw = (barcode.rawValue ?: barcode.displayValue)?.trim().orEmpty()
@@ -203,6 +225,21 @@ class QrScanActivity : ComponentActivity() {
         if (rejected != null) {
             status.text = "不是 MotoPlay 配对码：${rejected.take(60)}…" +
                 "\n请打开仪表上的“手机互联 / MotoPlay”二维码页面。"
+        }
+    }
+
+    /** 从相册照片识别二维码并连接，与相机扫码共用同一套解析与保存流程。 */
+    private fun decodeFromUri(uri: Uri) {
+        status.text = "正在识别照片…"
+        try {
+            val input = InputImage.fromFilePath(this, uri)
+            scanner.process(input)
+                .addOnSuccessListener { barcodes -> handleBarcodes(barcodes, fromPhoto = true) }
+                .addOnFailureListener {
+                    status.text = "照片识别失败：${it.message ?: "请换一张更清晰的照片"}"
+                }
+        } catch (error: Throwable) {
+            status.text = "无法读取该图片：${error.message ?: error.javaClass.simpleName}"
         }
     }
 
