@@ -7,3 +7,4 @@
 *.jar binary
 *.png binary
 *.webp binary
+gradlew text eol=lf
