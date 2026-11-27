@@ -50,10 +50,11 @@ class AboutActivity : ComponentActivity() {
         root.addView(sectionCard(
             title = "项目与作者",
             lines = listOf(
-                "作者：yuppiesnotzhuhao",
-                "GitHub 项目主页：https://github.com/yuppiesnotzhuhao/QITOU",
-                "问题反馈与功能建议：https://github.com/yuppiesnotzhuhao/QITOU/issues",
-                "欢迎提交 Issue 或 Pull Request。",
+                "${Brand.FULL_NAME}（${Brand.VARIANT_NAME}）基于 QITOU 二次开发，" +
+                    "支持百度 CarLife+ 发送端，小米等机型均可使用。",
+                "上游项目：https://github.com/yuppiesnotzhuhao/QITOU（作者 yuppiesnotzhuhao）",
+                "本分支仓库：https://github.com/super-band/QITOU-MI",
+                "问题反馈与功能建议：https://github.com/super-band/QITOU-MI/issues",
             ),
             links = true,
         ))

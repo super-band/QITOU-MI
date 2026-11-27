@@ -155,7 +155,7 @@ object MiniState {
             appendLine("device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
             appendLine("vehicle=${vehicleName.ifBlank { "未选择" }}")
             appendLine("wifi=${wifiText}")
-            appendLine("carplus=${carText}")
+            appendLine("carlife=${carText}")
             appendLine("pxc=${pxcText}")
             appendLine("audio=${audioText}")
             appendLine("bluetooth=${bluetoothText}")

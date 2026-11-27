@@ -81,7 +81,7 @@ class CarPlusBridgeService : Service() {
         if (MiniState.running) return
         MiniState.running = true
         MiniState.serviceActive = true
-        MiniState.update("正在启动 Car+ 接收")
+        MiniState.update("正在启动 CarLife 接收")
         // 发送端检测与拉起统一走 SenderRouter（百度 CarLife+ 优先，OPPO Car+ 兜底）。
         SenderRouter.launch(applicationContext, MiniState::log, force = false)
         val pipe = MiniVideoPipeline(MiniState::log)
@@ -107,7 +107,7 @@ class CarPlusBridgeService : Service() {
                     val fps = it.substringAfter("decode fps=").takeWhile(Char::isDigit).toIntOrNull()
                     if (fps != null) {
                         MiniState.update(fps = fps)
-                        if (fps > 0) MiniState.setCar("Car+ 正在解码 · $fps fps", Stage.OK)
+                        if (fps > 0) MiniState.setCar("CarLife 正在解码 · $fps fps", Stage.OK)
                     }
                 }
             },
@@ -115,7 +115,7 @@ class CarPlusBridgeService : Service() {
             requestedHeight = 480,
             requestedFps = 30,
             onVideoSize = { w, h ->
-                MiniState.log("[MINI] Car+ stream ${w}x$h")
+                MiniState.log("[MINI] CarLife stream ${w}x$h")
             },
             onReady = {
                 if (!videoLive) {
@@ -125,16 +125,16 @@ class CarPlusBridgeService : Service() {
                         runCatching { motoLink?.stop() }
                         motoLink = MotoLink(applicationContext, pipe, MiniState::log).also { it.start() }
                     }
-                    MiniState.update("Car+ 画面已接收 · 正在连接 MotoPlay")
-                    MiniState.setCar("Car+ 画面已接收 · 800×384", Stage.OK)
-                    updateNotification("Car+ 画面已接收 · 正在投送")
+                    MiniState.update("CarLife 画面已接收 · 正在连接 MotoPlay")
+                    MiniState.setCar("CarLife 画面已接收 · 800×384", Stage.OK)
+                    updateNotification("CarLife 画面已接收 · 正在投送")
                 }
             },
             onSessionEnded = {
                 videoLive = false
-                MiniState.update("Car+ 画面中断，正在重连")
-                MiniState.setCar("Car+ 画面中断，自动重连", Stage.ERROR)
-                updateNotification("Car+ 画面中断，正在重连")
+                MiniState.update("CarLife 画面中断，正在重连")
+                MiniState.setCar("CarLife 画面中断，自动重连", Stage.ERROR)
+                updateNotification("CarLife 画面中断，正在重连")
             },
             onAudioPacket = { isTts, pcm, rate, channels ->
                 audioPlayer?.write(isTts, pcm, rate, channels)

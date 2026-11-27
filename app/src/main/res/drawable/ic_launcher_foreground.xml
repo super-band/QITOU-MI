@@ -1,43 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#10283A"
-        android:fillType="evenOdd"
-        android:pathData="M54,21a33,33 0,1 0,0 66a33,33 0,1 0,0 -66z M54,25a29,29 0,1 1,0 58a29,29 0,1 1,0 -58z" />
-    <path
-        android:fillColor="#07131F"
-        android:pathData="M54,26a28,28 0,1 0,0 56a28,28 0,1 0,0 -56z" />
+    <!-- 开口仪表盘环（底部开口） -->
     <path
         android:fillColor="@android:color/transparent"
-        android:pathData="M73,39C68,32 61,29 53,29C39,29 29,40 29,54C29,68 39,79 53,79C61,79 68,76 73,69"
+        android:pathData="M38.4,71.6 A22,22 0 1 1 69.6,71.6"
+        android:strokeColor="#FFFFFF"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:strokeWidth="7.5">
-        <aapt:attr name="android:strokeColor">
-            <gradient
-                android:endX="82"
-                android:endY="82"
-                android:startX="20"
-                android:startY="20"
-                android:type="linear">
-                <item
-                    android:color="#76EEFF"
-                    android:offset="0" />
-                <item
-                    android:color="#258BFF"
-                    android:offset="1" />
-            </gradient>
-        </aapt:attr>
-    </path>
+        android:strokeWidth="6.5" />
+    <!-- 刻度 -->
     <path
-        android:fillColor="#F7FCFF"
-        android:pathData="M54,42L64,68L54,62L44,68Z" />
+        android:fillColor="@android:color/transparent"
+        android:pathData="M40.1,48 L44.5,50.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="4" />
     <path
-        android:fillColor="#FFB45C"
-        android:pathData="M71,70a3.2,3.2 0,1 0,6.4 0a3.2,3.2 0,1 0,-6.4 0z" />
+        android:fillColor="@android:color/transparent"
+        android:pathData="M67.9,48 L63.5,50.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="4" />
+    <!-- 指针 -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M54,56 L64,46"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <!-- 轴心 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,56 m-5,0 a5,5 0 1 0,10,0 a5,5 0 1 0,-10,0" />
 </vector>
