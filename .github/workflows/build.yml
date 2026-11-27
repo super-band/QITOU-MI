@@ -34,14 +34,18 @@ jobs:
 
       # 可选签名：配置 QITOU_RELEASE_KEYSTORE_BASE64 等仓库 secrets 后，
       # release APK 将用该 keystore 签名；未配置则输出未签名 release 与 debug APK。
+      # 注意：GitHub Actions 的 if 条件不支持 secrets 上下文，故在脚本内判空。
       - name: Configure release signing (optional)
-        if: ${{ secrets.QITOU_RELEASE_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.QITOU_RELEASE_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.QITOU_RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.QITOU_RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.QITOU_RELEASE_KEY_PASSWORD }}
         run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No release keystore secret configured; release APK will be unsigned."
+            exit 0
+          fi
           mkdir -p "$HOME/.android"
           echo "$KEYSTORE_BASE64" | base64 -d > "$HOME/.android/qitou-release.jks"
           {
