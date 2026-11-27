@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 object CarLifeSender : Sender {
     override val id = "carlife"
     override val displayName = "百度 CarLife+"
+    override val wirelessHint = "请在百度 CarLife+ 中选择「无线连接」"
 
     private val packages = listOf(
         "com.baidu.carlife",

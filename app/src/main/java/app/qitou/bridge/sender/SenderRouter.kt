@@ -7,13 +7,14 @@ import android.os.SystemClock
 /**
  * 发送端路由器：自动探测已安装的 CarLife 发送端并拉起。
  *
- * 优先级：百度 CarLife+（品牌无关，本分支默认发送端）优先，
- * OPPO Car+ 作为兜底兼容路径。
+ * 优先级：小米 CarWith（本分支目标机型自带，CarLife 组件）优先，
+ * 百度 CarLife+（品牌无关）次之，OPPO Car+ 作为兜底兼容路径。
  */
 object SenderRouter {
     private const val LAUNCH_COOLDOWN_MS = 5_000L
 
     private val senders: List<Sender> = listOf(
+        CarWithSender,
         CarLifeSender,
         CarPlusSender,
     )
@@ -25,6 +26,10 @@ object SenderRouter {
 
     /** 用于界面文案的发送端名称；未检测到时返回「发送端」。 */
     fun displayName(context: Context): String = detect(context)?.displayName ?: "发送端"
+
+    /** 指导用户在发送端里开启无线车机模式的操作提示。 */
+    fun wirelessHint(context: Context): String =
+        detect(context)?.wirelessHint ?: "请在发送端中开启「无线连接」"
 
     /**
      * 探测并拉起发送端；全部未安装或拉起失败时返回 false。
@@ -42,7 +47,7 @@ object SenderRouter {
         }
         val installed = senders.filter { it.isInstalled(context) }
         if (installed.isEmpty()) {
-            log("[SENDER] 未安装发送端：请安装百度 CarLife+（com.baidu.carlife）")
+            log("[SENDER] 未安装发送端：请安装小米 CarWith（com.miui.carlink）或百度 CarLife+（com.baidu.carlife）")
             return false
         }
         if (installed.size > 1) {

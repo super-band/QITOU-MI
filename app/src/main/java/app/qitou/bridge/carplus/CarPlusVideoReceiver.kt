@@ -122,7 +122,7 @@ class CarPlusVideoReceiver(
                             startupWarned = true
                             log("[CAR+] local CarLife ports did not appear — start 无线连接 in the sender app")
                             MiniState.setCar(
-                                "未找到 CarLife 发送端，请在百度 CarLife+ 中选择「无线连接」",
+                                "未找到 CarLife 端口，${SenderRouter.wirelessHint(context)}",
                                 Stage.ERROR,
                             )
                         }
@@ -134,7 +134,7 @@ class CarPlusVideoReceiver(
                     MiniState.update(fps = 0)
                     when {
                         senderMissing -> MiniState.setCar(
-                            "请安装百度 CarLife+（com.baidu.carlife）",
+                            "请安装小米 CarWith（com.miui.carlink）或百度 CarLife+",
                             Stage.ERROR,
                         )
                         running.get() -> MiniState.setCar("CarLife 连接中断，正在重连", Stage.ERROR)

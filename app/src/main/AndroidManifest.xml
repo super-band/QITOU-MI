@@ -37,7 +37,8 @@
         android:required="false" />
 
     <queries>
-        <!-- 发送端自动探测：百度 CarLife+ 优先，OPPO Car+ 系列兜底 -->
+        <!-- 发送端自动探测：小米 CarWith（本分支默认）/ 百度 CarLife+ / OPPO Car+ 系列 -->
+        <package android:name="com.miui.carlink" />
         <package android:name="com.baidu.carlife" />
         <package android:name="com.oplus.ocar" />
         <package android:name="com.coloros.ocar" />
