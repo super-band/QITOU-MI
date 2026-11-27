@@ -142,6 +142,9 @@ object MotoWifi {
         } catch (error: Exception) {
             connecting = false
             MiniState.setWifi("无法请求车机 Wi-Fi", Stage.ERROR)
+            if (error is SecurityException) {
+                MiniState.log("[WIFI] 权限缺失（需 CHANGE_NETWORK_STATE 或 WRITE_SETTINGS）: ${error.message}")
+            }
             errorCallback?.invoke(error.message ?: error.javaClass.simpleName)
             scheduleReconnect(app, "request-failed")
         }
