@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import app.qitou.bridge.carplus.CarPlusVideoReceiver
+import app.qitou.bridge.sender.SenderRouter
 
 class CarPlusBridgeService : Service() {
     private var pipeline: MiniVideoPipeline? = null
@@ -81,6 +82,8 @@ class CarPlusBridgeService : Service() {
         MiniState.running = true
         MiniState.serviceActive = true
         MiniState.update("正在启动 Car+ 接收")
+        // 发送端检测与拉起统一走 SenderRouter（百度 CarLife+ 优先，OPPO Car+ 兜底）。
+        SenderRouter.launch(applicationContext, MiniState::log, force = false)
         val pipe = MiniVideoPipeline(MiniState::log)
         pipe.start()
         pipeline = pipe

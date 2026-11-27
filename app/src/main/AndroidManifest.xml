@@ -36,7 +36,12 @@
         android:required="false" />
 
     <queries>
+        <!-- 发送端自动探测：百度 CarLife+ 优先，OPPO Car+ 系列兜底 -->
+        <package android:name="com.baidu.carlife" />
         <package android:name="com.oplus.ocar" />
+        <package android:name="com.coloros.ocar" />
+        <package android:name="com.oppo.ocar" />
+        <package android:name="com.oplus.car" />
     </queries>
 
     <application

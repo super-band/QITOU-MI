@@ -29,7 +29,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.ColorRes
 import androidx.core.content.FileProvider
-import app.qitou.bridge.carplus.CarPlusLauncher
+import app.qitou.bridge.sender.SenderRouter
 
 /** Single-page CarWithin-style controller embedded in the APK. */
 class MiniActivity : ComponentActivity() {
@@ -114,6 +114,7 @@ class MiniActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         MiniState.listener = { runOnUiThread(::render) }
+        carPlusButton.text = "重新启动${SenderRouter.displayName(this)}"
         attachPreview()
         render()
     }
@@ -448,16 +449,18 @@ class MiniActivity : ComponentActivity() {
         root.addView(fullscreenButton, linearParams(height = 48, bottom = 10))
 
         carPlusButton = Button(this).apply {
-            text = "重新启动 OPPO Car+"
+            text = "重新启动${SenderRouter.displayName(this@MiniActivity)}"
             textSize = 15f
             isAllCaps = false
             setTextColor(color(R.color.button_secondary_text))
             setBackground(rounded(color(R.color.button_secondary_surface), 14))
-            setOnClickListener { CarPlusLauncher.launch(this@MiniActivity, MiniState::log) }
+            setOnClickListener {
+                SenderRouter.launch(this@MiniActivity, MiniState::log)
+            }
         }
         root.addView(carPlusButton, linearParams(height = 48, bottom = 4))
         root.addView(TextView(this).apply {
-            text = "仅在投送过程中 OPPO Car+ 被关闭时使用"
+            text = "仅在投送过程中发送端被关闭时使用"
             setTextColor(color(R.color.text_body))
             textSize = 12f
             setPadding(dp(4), 0, 0, 0)
@@ -486,9 +489,9 @@ class MiniActivity : ComponentActivity() {
         root.addView(TextView(this).apply {
             text = "使用步骤\n" +
                 "1. 首次点“扫码添加并投送”；以后点“连接已保存车辆”\n" +
-                "2. 在 OPPO Car+ 中选择 CarLife 无线连接\n" +
+                "2. 在${SenderRouter.displayName(this@MiniActivity)}中选择“无线连接”进入车机模式\n" +
                 "3. 保持仪表在手机互联页面；断线后会自动重连\n" +
-                "4. 在“手机控制画面”或“全屏控制”中操作 Car+"
+                "4. 在“手机控制画面”或“全屏控制”中操作发送端"
             setTextColor(color(R.color.text_body))
             textSize = 14f
             setLineSpacing(0f, 1.15f)
@@ -735,7 +738,7 @@ class MiniActivity : ComponentActivity() {
 
     private fun launchBridge() {
         CarPlusBridgeService.start(this)
-        CarPlusLauncher.launch(this, MiniState::log)
+        SenderRouter.launch(this, MiniState::log)
         render()
     }
 

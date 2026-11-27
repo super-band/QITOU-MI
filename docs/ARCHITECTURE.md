@@ -3,7 +3,7 @@
 ## 媒体链路
 
 ```text
-OPPO Car+ / CarLife 发送端
+百度 CarLife+ / OPPO Car+ 发送端
   -> 本机 CarLife 车机端口 7240/8240/9240/9241/9340
   -> H.264 解码与应用内控制画面
   -> 800x384 H.264，底部保留 80 px 仪表安全区
@@ -13,6 +13,8 @@ OPPO Car+ / CarLife 发送端
 
 ## 主要模块
 
+- `sender/`：发送端抽象与 SenderRouter，自动探测并拉起百度 CarLife+
+  （优先）或 OPPO Car+（兜底）发送端。
 - `CarPlusVideoReceiver`：接收 CarLife 视频和音频数据。
 - `MiniVideoPipeline` / `AaCompositor`：解码、缩放、合成并重新编码投送画面。
 - `MotoAudioPlayer`：播放媒体和导航 PCM，并处理手机或车机 A2DP 路由。

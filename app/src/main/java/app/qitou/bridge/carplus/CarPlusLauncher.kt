@@ -15,6 +15,16 @@ object CarPlusLauncher {
         "com.oplus.car",
     )
 
+    /** True when any known Car+ host package is installed and visible. */
+    fun isInstalled(context: Context): Boolean = packages.any { pkg ->
+        try {
+            context.packageManager.getPackageInfo(pkg, 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun launch(context: Context, log: (String) -> Unit): Boolean {
         var installedAny = false
         for (pkg in packages) {

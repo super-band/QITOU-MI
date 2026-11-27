@@ -1,113 +1,93 @@
-<p align="center">
-  <img src="docs/images/app-icon.svg" width="112" alt="骑投 QITOU 应用图标">
-</p>
+# 骑投 · 小米适配版（QITOU-Mi）
 
-<h1 align="center">骑投 QITOU</h1>
+把手机画面和声音投送到 **春风 CFMOTO 450MT 摩托车 MotoPlay 仪表** 的 Android 桥接工具。
 
-骑投（QITOU）是一个 Android 手机端桥接工具，用于将 OPPO Car+ / CarLife
-画面和声音投送到 CFMOTO 450MT 的 MotoPlay 仪表。
+本仓库基于 [yuppiesnotzhuhao/QITOU](https://github.com/yuppiesnotzhuhao/QITOU)（AGPL-3.0）二次开发，
+将发送端从 OPPO Car+ 扩展为 **百度 CarLife+**，使小米及其他非 OPPO 机型可用。
 
-项目不依赖 Android Auto、Google 地图、CarPlay、Shizuku、Root、无障碍服务
-或悬浮窗。
+> 与 OPPO、百度、CFMOTO、Google 无任何隶属或官方合作关系。协议互通实现借鉴
+> OpenCfMoto、CarPToCarL、CarVeX 等开源项目。
 
-## 下载
+## 功能概览
 
-请前往 [GitHub Releases](https://github.com/yuppiesnotzhuhao/QITOU/releases/latest)
-下载最新 APK 和 SHA-256 校验文件。
+- 将 CarLife 画面（H.264）与声音（音乐 / 导航双音量）投送到 450MT 仪表
+- 仪表端触控回传手机
+- 扫码 / 热点配对
+- 不依赖 Root、Shizuku、无障碍、悬浮窗，也不需要 Android Auto / CarPlay
+- 输出画布 800×384，底部保留 80 px 仪表安全区
 
-## 系统要求
+## 与上游版本的区别
 
-- Android 10 及以上
-- 手机安装并登录 OPPO Car+
-- 摩托车仪表支持 CFMOTO MotoPlay
-- 使用车机蓝牙声音时，需要提前在系统蓝牙中配对车机
+上游 QITOU 仅支持 OPPO Car+ 作为发送端，其中协议层（CarLife 车机端 + CFMOTO PXC）
+本身与手机品牌无关。本分支只改动发送端适配层：
 
-## 界面预览
+| 模块 | 本分支改动 |
+|---|---|
+| 发送端抽象 `sender/`（新增） | 支持百度 CarLife+（`com.baidu.carlife`），自动探测并拉起 |
+| `CarPlusBridgeService` | 发送端检测与拉起改走 `SenderRouter` |
+| `CarPlusVideoReceiver` / `MiniVideoPipeline` / `MotoWifi` / `MotoLink` / `MotoAudioPlayer` | 不改动 |
 
-| 手机控制画面 | 深色模式 |
-| :---: | :---: |
-| <img src="docs/images/main-light.png" width="320" alt="骑投浅色主界面"> | <img src="docs/images/main-dark.png" width="320" alt="骑投深色主界面"> |
+媒体链路不变：
 
-| 声音与连接 | 关于与项目信息 |
-| :---: | :---: |
-| <img src="docs/images/audio-light.png" width="320" alt="骑投声音与连接设置"> | <img src="docs/images/about-light.png" width="320" alt="骑投关于页面与 GitHub 项目信息"> |
+```
+百度 CarLife+ / OPPO Car+ 发送端
+  → 本机 CarLife 车机端口 7240/8240/9240/9241/9340
+  → H.264 解码与应用内控制画面
+  → 800x384 H.264，底部保留 80 px 仪表安全区
+  → CFMOTO EasyConn / PXC
+  → 450MT MotoPlay
+```
 
-## 主要功能
+## 环境要求
 
-- 将 OPPO Car+ 画面桥接到 CFMOTO MotoPlay。
-- 支持二维码配对、手动 Wi-Fi 配对和断线自动重连。
-- 应用内提供手机控制画面、触控转发和横屏全屏模式。
-- 音乐与导航独立音量，导航播报时可自动压低音乐。
-- 声音默认跟随手机；也可手动切换到车机蓝牙 A2DP。
-- 支持息屏保活、前台通知和日志导出。
-- 支持 Android 17 深色、浅色主题。
+- Android 手机（Android 10+，小米机型需 HyperOS / MIUI）
+- 已安装 **百度 CarLife+** 并登录（小米手机应用商店或官网下载）
+- CFMOTO 450MT（MotoPlay，2024 款）
+- 权限：附近 Wi-Fi、通知、相机（扫码）、蓝牙连接、定位（Android 12-）
 
-## 首次使用
+## 安装与使用
 
-1. 在摩托车仪表上打开 MotoPlay / 手机互联二维码页面。
-2. 打开骑投，点击“扫码添加并投送”。
-3. 按系统提示授权附近设备、通知和相机权限。
-4. 骑投连接仪表 Wi-Fi 后会自动打开 OPPO Car+。
-5. 在 OPPO Car+ 中选择“CarLife 无线连接”并点击“连接”。
-6. 保持仪表停留在 MotoPlay 页面。
-7. 在手机上使用“手机控制画面”或“全屏控制”操作 Car+。
+1. 安装本应用，授予上述权限
+2. **HyperOS 必做**：设置 → 应用 → 骑投 → 省电策略改为"无限制"，并允许自启动，
+   否则息屏后投送会中断
+3. 打开骑投，扫码或手动配对 450MT 仪表热点
+4. 应用会拉起百度 CarLife+，在其界面选择"无线连接"进入车机模式
+5. 仪表出现画面后即可使用；音乐 / 导航音量可在应用内分别调节
 
-车机蓝牙权限只会在选择“车机蓝牙”时申请。拒绝蓝牙不会阻止投送，应用会继续
-使用手机音频。
+## 从源码构建
 
-## 声音输出
+```bash
+git clone https://github.com/super-band/QITOU-MI.git
+cd QITOU-MI
+# Android Studio 打开，Sync 后 Build → Build APK
+# 或命令行：
+./gradlew assembleRelease
+```
 
-- “手机”是默认选项，跟随 Android 当前媒体输出，可能使用扬声器、有线耳机
-  或已连接的蓝牙耳机。
-- “车机蓝牙”只使用已配对的 CFMOTO A2DP，未连接时不会静默回退。
-- 音乐和导航音量在应用内分别调整。
+## 持续集成
 
-## 常见问题
+仓库内置 GitHub Actions（`.github/workflows/build.yml`）：
 
-### 息屏后连接断开
+- push / PR 到 `main`：自动跑 lint + 单测，构建 debug / release APK，
+  在 Actions 的 Artifacts 中下载；
+- 推送 `v*` 标签（如 `v0.10.2`）：额外创建 GitHub Release 并附上 APK。
 
-打开骑投的“息屏保活”，并在 ColorOS 中允许应用后台运行。部分 OPPO 系统版本
-仍可能限制后台网络，需要将骑投加入电池优化白名单。
-
-### 有画面但没有声音
-
-确认当前的声音输出选择。使用手机音频时检查 Android 当前媒体输出设备；
-使用车机蓝牙时确认 CFMOTO A2DP 已连接并授予附近设备权限。
-
-### 为什么地图不是高德或百度
-
-骑投只负责传递 OPPO Car+ 的画面和声音，不接入地图 SDK。实际地图和导航能力
-由 OPPO Car+ 及手机中安装的地图应用提供。
+release 签名（可选）：在仓库 Settings → Secrets and variables → Actions 配置
+`QITOU_RELEASE_KEYSTORE_BASE64`（keystore 的 base64）、`QITOU_RELEASE_STORE_PASSWORD`、
+`QITOU_RELEASE_KEY_ALIAS`、`QITOU_RELEASE_KEY_PASSWORD` 后，release APK 将自动签名；
+未配置则输出未签名 release 与 debug APK。
 
 ## 已知限制
 
-- 仪表交互仅通过手机完成，不依赖摩托车触摸屏或车把按键。
-- MotoPlay / PXC 为互操作性实现，后续仪表固件可能改变协议。
-- 车机蓝牙和本地网络行为可能受 ColorOS 或手机厂商策略影响。
-- 骑投无法绕过 ColorOS 首次连接 Wi-Fi 时的系统确认界面。
-- 日志会脱敏 Wi-Fi 密码和配对信息，但分享前仍建议检查内容。
-- 本项目与 OPPO、CFMOTO、Google 无隶属或官方合作关系。
+- CarLife+ 的无线发现机制能否被本机虚拟车机端直接唤起，仍在验证；
+  若卡在连接阶段，请手动在 CarLife+ 内发起无线连接
+- `WifiNetworkSpecifier` 连接仪表热点时每次都会弹系统确认框，属系统行为
+- CFMOTO 仪表固件升级可能改动 PXC 协议，导致投送失效
+- 触控转发在部分 CarLife+ 版本上可能不生效
 
-## 开发与构建
+## License
 
-构建要求、Release 签名配置和输出路径见
-[docs/BUILDING.md](docs/BUILDING.md)。
+[AGPL-3.0](LICENSE)
 
-内部媒体链路、PXC 和端口说明见
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-
-## 致谢
-
-感谢 [CarWithin 项目](https://github.com/xmz28/CarWithin) 及作者
-[xmz28](https://github.com/xmz28)。CarWithin 的 iOS + CarPlay/CarLife
-互联方案为骑投的产品设计和协议研究提供了启发。
-
-骑投还包含或改编了 OpenCfMoto、CarPToCarL、CarVeX 等开源项目。完整声明请查看
-`NOTICE` 和 `app/src/main/assets/licenses/`。
-
-## 开源许可证
-
-骑投以 GNU Affero General Public License v3.0 only
-（`AGPL-3.0-only`）开源。完整协议见 [LICENSE](LICENSE)。
-
-分发修改版时，必须保留版权和许可声明，并按照 AGPL 提供 Corresponding Source。
+基于 QITOU（Copyright 2026 yuppiesnotzhuhao）修改。分发本软件或其衍生版本时，
+须保留本许可与版权声明，并公开完整源码。

@@ -7,6 +7,21 @@ SPDX-License-Identifier: AGPL-3.0-only
 This project is distributed under the GNU Affero General Public License v3.0
 only. See LICENSE for the complete license text.
 
+QITOU-Mi（骑投 · 小米适配版）修改说明
+=====================================
+
+本仓库基于 QITOU（https://github.com/yuppiesnotzhuhao/QITOU，AGPL-3.0）
+二次开发，修改内容如下：
+
+- 新增 app/src/main/java/app/qitou/bridge/sender/：发送端抽象（Sender）、
+  发送端路由器（SenderRouter）以及 CarLifeSender / CarPlusSender 实现，
+  将发送端从 OPPO Car+ 扩展为 百度 CarLife+（com.baidu.carlife），使小米及
+  其他非 OPPO 机型可用。
+- CarPlusBridgeService：发送端检测与拉起改走 SenderRouter。
+- AndroidManifest：queries 增加 com.baidu.carlife 等发送端包名。
+- 其余模块（CarPlusVideoReceiver / MiniVideoPipeline / MotoWifi / MotoLink /
+  MotoAudioPlayer 等）保持上游实现不变。
+
 OpenCfMoto
 ==========
 
