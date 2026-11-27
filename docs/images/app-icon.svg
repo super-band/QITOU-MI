@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512" role="img" aria-label="骑投 QITOU 应用图标">
+  <defs>
+    <linearGradient id="ring" x1="20" y1="20" x2="82" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#76EEFF"/>
+      <stop offset="1" stop-color="#258BFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="104" height="104" rx="24" fill="#06111C"/>
+  <circle cx="54" cy="54" r="33" fill="#10283A" fill-rule="evenodd"/>
+  <circle cx="54" cy="54" r="28" fill="#07131F"/>
+  <path d="M73 39C68 32 61 29 53 29C39 29 29 40 29 54C29 68 39 79 53 79C61 79 68 76 73 69"
+        fill="none" stroke="url(#ring)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M54 42L64 68L54 62L44 68Z" fill="#F7FCFF"/>
+  <circle cx="74.2" cy="73.2" r="3.2" fill="#FFB45C"/>
+</svg>

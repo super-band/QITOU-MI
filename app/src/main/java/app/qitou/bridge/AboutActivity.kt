@@ -48,6 +48,17 @@ class AboutActivity : ComponentActivity() {
         }, top(4))
 
         root.addView(sectionCard(
+            title = "项目与作者",
+            lines = listOf(
+                "作者：yuppiesnotzhuhao",
+                "GitHub 项目主页：https://github.com/yuppiesnotzhuhao/QITOU",
+                "问题反馈与功能建议：https://github.com/yuppiesnotzhuhao/QITOU/issues",
+                "欢迎提交 Issue 或 Pull Request。",
+            ),
+            links = true,
+        ))
+
+        root.addView(sectionCard(
             title = "开源许可",
             lines = listOf(
                 "${Brand.FULL_NAME} 以 GNU Affero General Public License v3.0 only " +

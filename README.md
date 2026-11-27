@@ -1,4 +1,8 @@
-# 骑投 QITOU
+<p align="center">
+  <img src="docs/images/app-icon.svg" width="112" alt="骑投 QITOU 应用图标">
+</p>
+
+<h1 align="center">骑投 QITOU</h1>
 
 骑投（QITOU）是一个 Android 手机端桥接工具，用于将 OPPO Car+ / CarLife
 画面和声音投送到 CFMOTO 450MT 的 MotoPlay 仪表。
@@ -17,6 +21,16 @@
 - 手机安装并登录 OPPO Car+
 - 摩托车仪表支持 CFMOTO MotoPlay
 - 使用车机蓝牙声音时，需要提前在系统蓝牙中配对车机
+
+## 界面预览
+
+| 手机控制画面 | 深色模式 |
+| :---: | :---: |
+| <img src="docs/images/main-light.png" width="320" alt="骑投浅色主界面"> | <img src="docs/images/main-dark.png" width="320" alt="骑投深色主界面"> |
+
+| 声音与连接 | 关于与项目信息 |
+| :---: | :---: |
+| <img src="docs/images/audio-light.png" width="320" alt="骑投声音与连接设置"> | <img src="docs/images/about-light.png" width="320" alt="骑投关于页面与 GitHub 项目信息"> |
 
 ## 主要功能
 
