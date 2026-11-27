@@ -124,6 +124,7 @@ class MiniActivity : ComponentActivity() {
     override fun onPause() {
         MiniState.listener = null
         detachPreview()
+        super.onPause()
     }
 
     override fun onDestroy() {
