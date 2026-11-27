@@ -68,14 +68,15 @@ cd QITOU-MI
 
 仓库内置 GitHub Actions（`.github/workflows/build.yml`）：
 
-- push / PR 到 `main`：自动跑 lint + 单测，构建 debug / release APK，
-  在 Actions 的 Artifacts 中下载；
-- 推送 `v*` 标签（如 `v0.10.2`）：额外创建 GitHub Release 并附上 APK。
+- push / PR 到 `main`：自动跑 lint + 单测，构建 debug / release APK；
+- **main 每次构建成功后自动发布/刷新 GitHub Release「latest」并附 APK**，
+  直接在 [Releases](../../releases) 页下载即可；
+- 推送 `v*` 标签（如 `v0.10.2`）：创建正式版 Release 并附 APK。
 
 release 签名（可选）：在仓库 Settings → Secrets and variables → Actions 配置
 `QITOU_RELEASE_KEYSTORE_BASE64`（keystore 的 base64）、`QITOU_RELEASE_STORE_PASSWORD`、
 `QITOU_RELEASE_KEY_ALIAS`、`QITOU_RELEASE_KEY_PASSWORD` 后，release APK 将自动签名；
-未配置则输出未签名 release 与 debug APK。
+未配置则请下载 debug APK 安装（release 为未签名包，无法直接安装）。
 
 ## 已知限制
 

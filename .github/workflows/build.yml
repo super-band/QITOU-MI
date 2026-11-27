@@ -58,6 +58,38 @@ jobs:
       - name: Build
         run: ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:assembleDebug :app:assembleRelease --stacktrace
 
+      - name: Prepare release assets
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p release-assets
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          cp app/build/outputs/apk/debug/*.apk "release-assets/QITOU-MI-$VERSION-debug.apk"
+          for f in app/build/outputs/apk/release/*.apk; do
+            case "$(basename "$f")" in
+              *unsigned*) cp "$f" "release-assets/QITOU-MI-$VERSION-release-unsigned.apk" ;;
+              *) cp "$f" "release-assets/QITOU-MI-$VERSION-release.apk" ;;
+            esac
+          done
+          ls -la release-assets
+
+      # main 分支每次构建自动发布/刷新 rolling release「latest」，方便直接从 Releases 页下载。
+      - name: Publish rolling release (latest)
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then gh release delete latest --yes; fi
+          git push origin :refs/tags/latest >/dev/null 2>&1 || true
+          gh release create latest \
+            --target "$GITHUB_SHA" \
+            --title "自动构建 #${{ github.run_number }} · ${VERSION}" \
+            --notes "main 分支自动构建 · commit ${GITHUB_SHA::7} · [构建详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          安装说明：未配置 release 签名 secrets 时，请下载 -debug.apk（可直接安装）；-release-unsigned.apk 为未签名包，无法直接安装。" \
+            --latest \
+            release-assets/*.apk
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -70,11 +102,9 @@ jobs:
           name: qitou-mi-release-apk
           path: app/build/outputs/apk/release/*.apk
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (version tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/debug/*.apk
+          files: release-assets/*.apk
           generate_release_notes: true
