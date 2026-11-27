@@ -1,79 +1,71 @@
 # 骑投 QITOU
 
-骑投 QITOU is an Android-only bridge from OPPO Car+ to a CFMOTO 450MT MotoPlay
-dashboard. It does not use Android Auto, Google Maps, CarPlay, Shizuku, root, an
-accessibility service, or an overlay window.
+骑投（QITOU）是一个 Android 手机端桥接工具，用于将 OPPO Car+ / CarLife
+画面和声音投送到 CFMOTO 450MT 的 MotoPlay 仪表。
+
+项目不依赖 Android Auto、Google 地图、CarPlay、Shizuku、Root、无障碍服务
+或悬浮窗。
+
+最新安装包请前往
+[GitHub Releases](https://github.com/yuppiesnotzhuhao/QITOU/releases/latest)
+下载。
+
+## 工作链路
 
 ```text
-OPPO Car+ / CarLife sender
-  -> local CarLife head-unit ports 7240/8240/9240/9241/9340
-  -> H.264 decode and in-app controller Surface
-  -> 800x384 H.264, 80 px dashboard-safe bottom inset
-  -> CFMOTO EasyConn/PXC
+OPPO Car+ / CarLife 发送端
+  -> 本机 CarLife 车机端口 7240/8240/9240/9241/9340
+  -> H.264 解码与应用内控制画面
+  -> 800x384 H.264，底部保留 80 px 仪表安全区
+  -> CFMOTO EasyConn / PXC
   -> 450MT MotoPlay
 ```
 
-## Implemented
+## 已实现功能
 
-- One-page CarWithin-style UI with a built-in phone control Surface.
-- Touch and two-finger composite touch forwarding to OPPO Car+.
-- Immersive landscape full-screen controller inside the APK; no floating overlay.
-- MotoPlay QR scanning with automatic Wi-Fi join.
-- Manual SSID/password entry and open-network support.
-- Automatic Wi-Fi recovery after a dashboard sleep or reboot.
-- Car+ video reconnection and encoder re-initialization.
-- PXC listener, probe, heartbeat, and reconnect supervisor.
-- Media and navigation PCM playback from CarLife ports 9240/9241.
-- Explicit **phone** or **bike Bluetooth A2DP** output selection. Phone is the default
-  and follows Android's current media route, including personal Bluetooth headsets;
-  bike mode never silently falls back to the phone.
-- Independent in-app music/navigation volume sliders, plus navigation auto-ducking.
-- A2DP route preference and a paired-CFMOTO reconnection keeper.
-- Partial wake lock and low-latency Wi-Fi lock for real screen-off streaming.
-- Per-stage vehicle, Wi-Fi, Car+, MotoPlay, audio, and Bluetooth status.
-- Redacted support-log export through the Android share sheet.
-- Foreground notification with a stop action.
-- "Open OPPO Car+" is enabled only while 骑投 is connected and running; it is a
-  recovery entry for when the Car+ Activity was closed.
-- Built-in About page with the runtime version, open-source credits, the complete
-  AGPL-3.0-only license text, and third-party notices.
+- 内置手机控制画面的单页界面，不依赖悬浮窗。
+- 支持单指和双指触控转发到 OPPO Car+。
+- 应用内横屏全屏控制。
+- MotoPlay 二维码扫描与自动连接 Wi-Fi。
+- 支持手动输入 SSID、密码和开放网络。
+- 仪表休眠或重启后自动恢复 Wi-Fi。
+- Car+ 视频断线重连与编码器重新初始化。
+- PXC 监听、探测、心跳和自动重连。
+- 播放 CarLife 端口 9240/9241 的音乐和导航 PCM 音频。
+- 支持 **手机** 和 **车机蓝牙 A2DP** 两种声音输出：
+  - 默认使用“手机”，跟随 Android 当前媒体输出，可能是有线耳机、蓝牙耳机或扬声器。
+  - “车机蓝牙”只选择已连接的 CFMOTO A2DP，未连接时不会静默回退到手机。
+- 音乐、导航独立音量控制，以及导航播报时自动压低音乐。
+- 车机 A2DP 路由偏好和已配对 CFMOTO 自动重连。
+- 使用 Partial WakeLock 和低延迟 Wi-Fi Lock 维持息屏投送。
+- 分别显示车辆、Wi-Fi、Car+、MotoPlay、音频和蓝牙状态。
+- 通过 Android 分享面板导出已脱敏的支持日志。
+- 带“停止”操作的前台服务通知。
+- “重新启动 OPPO Car+”仅在投送运行期间可用，用于恢复被关闭的 Car+ 页面。
+- 内置关于页面，包含版本、开源致谢、完整 AGPL-3.0-only 协议和第三方声明。
+- 支持 Android 17 深色和浅色主题。
 
-## Credits and license
+## 首次使用
 
-Thanks to the [CarWithin project](https://github.com/xmz28/CarWithin) and its
-author [xmz28](https://github.com/xmz28). CarWithin's iOS + CarPlay/CarLife
-integration work provided useful product-design and protocol-research
-inspiration for 骑投 QITOU.
+1. 在摩托车仪表上打开 MotoPlay / 手机互联二维码页面。
+2. 打开骑投，点击 **扫码添加并投送**。
+3. 按系统提示授权附近设备、通知和相机权限。
+4. 骑投连接仪表 Wi-Fi 后会自动打开 OPPO Car+。
+5. 在 OPPO Car+ 中选择 **CarLife 无线连接** 并点击 **连接**。
+6. 保持仪表停留在 MotoPlay 页面。
+7. 在手机上使用 **手机控制画面** 或 **全屏控制** 操作 Car+。
+8. 如果 ColorOS 在息屏后停止连接，请在 **息屏保活** 中打开系统电池设置。
 
-骑投 QITOU also contains or adapts work from OpenCfMoto, CarPToCarL, CarVeX, and
-other open-source projects. See `NOTICE` and `app/src/main/assets/licenses/` for
-the complete notices.
+车机蓝牙权限只会在选择“车机蓝牙”时申请；如果不授权，应用会继续使用手机
+音频，不会阻止投送。
 
-骑投 QITOU is distributed under the GNU Affero General Public License v3.0 only
-(`AGPL-3.0-only`). The complete license is bundled in the APK and available from
-the in-app About page. Redistributed modified versions must preserve attribution
-and provide the Corresponding Source as required by AGPL.
+首次连接 MotoPlay 可能需要等待数秒，因为 Car+ 需要先启动本地 CarLife
+发送端。无法识别的二维码不会保存。
 
-## First run
+## 构建
 
-1. On the dashboard, open the MotoPlay / phone-link QR page.
-2. Open 骑投 and tap **扫码并启动**.
-3. Approve camera, nearby Wi-Fi, Bluetooth, and notification access.
-4. 骑投 joins the dashboard Wi-Fi and opens OPPO Car+.
-5. In OPPO Car+, choose **CarLife 无线连接** and tap **连接**.
-6. Keep the dashboard on its MotoPlay page.
-7. Use **手机控制画面** or **全屏控制** on the phone.
-8. Allow battery-optimization exclusion from **息屏保活** if ColorOS stops the
-   bridge after the screen turns off.
-
-The first MotoPlay connection may take a few seconds while Car+ starts its local
-CarLife sender. A wrong or non-pairing QR is reported without trying to save it.
-
-## Build
-
-Release signing credentials are intentionally not stored in the repository. Put the
-keystore outside the checkout and create
-`%USERPROFILE%\.android\qitou-release.properties`:
+Release 签名材料不会提交到仓库。请把 keystore 放在仓库目录之外，并创建
+`%USERPROFILE%\.android\qitou-release.properties`：
 
 ```properties
 storeFile=C:/Users/you/.android/qitou-release.jks
@@ -82,9 +74,12 @@ keyAlias=qitou
 keyPassword=YOUR_KEY_PASSWORD
 ```
 
-The same values can be supplied through `QITOU_RELEASE_STORE_FILE`,
-`QITOU_RELEASE_STORE_PASSWORD`, `QITOU_RELEASE_KEY_ALIAS`, and
-`QITOU_RELEASE_KEY_PASSWORD` in CI.
+CI 也可以使用以下环境变量：
+
+- `QITOU_RELEASE_STORE_FILE`
+- `QITOU_RELEASE_STORE_PASSWORD`
+- `QITOU_RELEASE_KEY_ALIAS`
+- `QITOU_RELEASE_KEY_PASSWORD`
 
 ```powershell
 $env:JAVA_HOME='C:\path\to\jdk-17'
@@ -93,17 +88,32 @@ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME
 .\gradlew.bat :app:lintRelease :app:testReleaseUnitTest :app:assembleRelease --no-daemon
 ```
 
-Output: `app/build/outputs/apk/release/app-release.apk`.
+输出文件：
 
-## Safety and limitations
+`app/build/outputs/apk/release/app-release.apk`
 
-- Dashboard interaction is intentionally phone-only; 骑投 does not depend on
-  a motorcycle touchscreen or handlebar buttons.
-- CFMOTO PXC is reverse-engineered. A future dashboard firmware update can require
-  protocol changes.
-- Map SDK keys are not stored by 骑投. OPPO Car+ and the installed map app
-  own their map configuration.
-- The app cannot bypass ColorOS's first-time Wi-Fi-confirmation UI. Once the network
-  has been approved, automatic reconnection is attempted in the background.
-- Logs redact Wi-Fi passwords and pairing fragments, but review any support log
-  before sharing it.
+## 注意事项与限制
+
+- 仪表交互仅通过手机完成，不依赖摩托车触摸屏或车把按键。
+- CFMOTO PXC 为互操作性实现；后续仪表固件更新可能需要修改协议。
+- 骑投不保存高德或百度地图 SDK Key，地图配置由 OPPO Car+ 和已安装的地图应用管理。
+- 应用无法绕过 ColorOS 首次连接 Wi-Fi 时的确认界面。网络首次批准后，后续重连会在后台自动进行。
+- 日志会脱敏 Wi-Fi 密码和配对信息，但分享前仍建议检查内容。
+- 车机蓝牙和本地网络行为仍可能受 ColorOS 或手机厂商策略影响。
+
+## 致谢
+
+感谢 [CarWithin 项目](https://github.com/xmz28/CarWithin) 及作者
+[xmz28](https://github.com/xmz28)。CarWithin 的 iOS + CarPlay/CarLife
+互联方案为骑投的产品设计和协议研究提供了启发。
+
+骑投还包含或改编了 OpenCfMoto、CarPToCarL、CarVeX 等开源项目。完整声明请查看
+`NOTICE` 和 `app/src/main/assets/licenses/`。
+
+## 开源许可证
+
+骑投以 GNU Affero General Public License v3.0 only
+（`AGPL-3.0-only`）开源。
+
+完整协议已包含在 APK 和应用内关于页面中。分发修改版时，必须保留版权和许可声明，
+并按照 AGPL 提供 Corresponding Source。
