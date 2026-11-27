@@ -4,8 +4,11 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
+import android.os.SystemClock
+import android.text.InputType
 import android.view.Gravity
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -21,6 +24,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
@@ -39,6 +43,7 @@ class QrScanActivity : ComponentActivity() {
         }
     }
     @Volatile private var busy = false
+    @Volatile private var busyAt = 0L
     @Volatile private var saving = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,7 +55,7 @@ class QrScanActivity : ComponentActivity() {
         window.isNavigationBarContrastEnforced = false
         previewView = PreviewView(this)
         status = TextView(this).apply {
-            text = "对准仪表上的 MotoPlay 配对二维码"
+            text = "对准仪表上的 MotoPlay 配对二维码；识别不到可点右上角「粘贴文本」"
             setTextColor(Color.WHITE)
             textSize = 18f
             gravity = Gravity.CENTER
@@ -67,6 +72,15 @@ class QrScanActivity : ComponentActivity() {
                 setBackgroundColor(Color.argb(175, 12, 18, 26))
                 setOnClickListener { finish() }
             }, FrameLayout.LayoutParams(180, 105, Gravity.TOP or Gravity.START).apply {
+                topMargin = (48 * resources.displayMetrics.density).toInt()
+            })
+            addView(Button(this@QrScanActivity).apply {
+                text = "粘贴文本"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.argb(175, 12, 18, 26))
+                setOnClickListener { showPasteDialog() }
+            }, FrameLayout.LayoutParams(220, 105, Gravity.TOP or Gravity.END).apply {
                 topMargin = (48 * resources.displayMetrics.density).toInt()
             })
             addView(status, FrameLayout.LayoutParams(-1, 160, Gravity.BOTTOM))
@@ -137,55 +151,104 @@ class QrScanActivity : ComponentActivity() {
 
     @androidx.annotation.OptIn(markerClass = [ExperimentalGetImage::class])
     private fun analyze(image: ImageProxy) {
-        if (busy || saving) {
+        if (saving) {
             image.close()
             return
+        }
+        if (busy) {
+            // 看门狗：识别器长时间无回调时自动复位，避免相机从此再无响应。
+            if (SystemClock.elapsedRealtime() - busyAt <= 5_000L) {
+                image.close()
+                return
+            }
+            busy = false
         }
         val media = image.image ?: run {
             image.close()
             return
         }
         busy = true
-        val input = InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees)
-        scanner.process(input)
-            .addOnSuccessListener { barcodes ->
-                var rejected: String? = null
-                for (barcode in barcodes) {
-                    val raw = barcode.rawValue ?: continue
-                    val vehicle = MotoVehicle.parse(raw)
-                    if (vehicle == null) {
-                        rejected = raw
-                        continue
-                    }
-                    saving = true
-                    val appContext = applicationContext
-                    executor.execute {
-                        val saved = MotoVehiclePrefs.save(appContext, vehicle)
-                        runOnUiThread {
-                            if (saved) {
-                                MiniState.update("已读取 ${vehicle.ssid}")
-                                setResult(RESULT_OK)
-                                finish()
-                            } else {
-                                saving = false
-                                busy = false
-                                status.text = "无法安全保存车辆信息，请检查系统 KeyStore 后重试。"
-                            }
-                        }
-                    }
-                    return@addOnSuccessListener
+        busyAt = SystemClock.elapsedRealtime()
+        try {
+            val input = InputImage.fromMediaImage(media, image.imageInfo.rotationDegrees)
+            scanner.process(input)
+                .addOnSuccessListener { barcodes -> handleBarcodes(barcodes) }
+                .addOnFailureListener {
+                    status.text = "识别失败：${it.message ?: "请重新对准二维码"}"
                 }
-                if (rejected != null) {
-                    status.text = "这不是 MotoPlay 配对码。请打开仪表上的“手机互联 / MotoPlay”二维码页面。"
+                .addOnCompleteListener {
+                    image.close()
+                    if (!saving) busy = false
+                }
+        } catch (error: Exception) {
+            runCatching { image.close() }
+            busy = false
+            status.text = "识别异常：${error.message ?: error.javaClass.simpleName}"
+        }
+    }
+
+    private fun handleBarcodes(barcodes: List<Barcode>) {
+        var rejected: String? = null
+        for (barcode in barcodes) {
+            val raw = (barcode.rawValue ?: barcode.displayValue)?.trim().orEmpty()
+            if (raw.isEmpty()) continue
+            val vehicle = MotoVehicle.parse(raw)
+            if (vehicle == null) {
+                rejected = raw
+                continue
+            }
+            acceptVehicle(vehicle)
+            return
+        }
+        if (rejected != null) {
+            status.text = "不是 MotoPlay 配对码：${rejected.take(60)}…" +
+                "\n请打开仪表上的“手机互联 / MotoPlay”二维码页面。"
+        }
+    }
+
+    private fun acceptVehicle(vehicle: MotoVehicle) {
+        if (saving) return
+        saving = true
+        status.text = "已识别 ${vehicle.ssid}，正在保存…"
+        val appContext = applicationContext
+        executor.execute {
+            val saved = MotoVehiclePrefs.save(appContext, vehicle)
+            runOnUiThread {
+                if (saved) {
+                    MiniState.update("已读取 ${vehicle.ssid}")
+                    setResult(RESULT_OK)
+                    finish()
+                } else {
+                    saving = false
+                    busy = false
+                    status.text = "无法安全保存车辆信息，请检查系统 KeyStore 后重试。"
                 }
             }
-            .addOnFailureListener {
-                status.text = "识别失败：${it.message ?: "请重新对准二维码"}"
+        }
+    }
+
+    /** 相机识别不到时的兜底：粘贴其他扫码工具读到的二维码文本，走同一套解析与保存流程。 */
+    private fun showPasteDialog() {
+        val input = EditText(this).apply {
+            hint = "粘贴二维码文本内容"
+            setSingleLine(false)
+            minLines = 3
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        CarDialogs.builder(this)
+            .setTitle("粘贴二维码文本")
+            .setMessage("相机识别不到时，可用其他扫码工具读取文本后粘贴到这里。")
+            .setView(input)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("确定") { _, _ ->
+                val vehicle = MotoVehicle.parse(input.text.toString())
+                if (vehicle == null) {
+                    status.text = "无法识别该文本为配对信息，请检查内容是否完整。"
+                } else {
+                    acceptVehicle(vehicle)
+                }
             }
-            .addOnCompleteListener {
-                image.close()
-                if (!saving) busy = false
-            }
+            .show()
     }
 
     override fun onDestroy() {

@@ -22,6 +22,24 @@ class CoreParsingTest {
     }
 
     @Test
+    fun parsesCfmotoDownloadUrlQr() {
+        val vehicle = MotoVehicle.parse(
+            "https://c.cfmoto.com/app/download.html?modelid=37416&sn=gYTG&action=9&" +
+                "ssid=CFMOTO-18ccd1&pwd=20d3024968&auth=wpa2-psk&" +
+                "mac=6C:F5:4A:14:8E:B5&name=CFMOTO-18ccd1",
+        )
+
+        assertNotNull(vehicle)
+        assertEquals("CFMOTO-18ccd1", vehicle!!.ssid)
+        assertEquals("20d3024968", vehicle.password)
+        assertEquals("6c:f5:4a:14:8e:b5", vehicle.mac)
+        assertEquals("37416", vehicle.modelId)
+        assertEquals("CFMOTO-18ccd1", vehicle.name)
+        assertEquals(9, vehicle.action)
+        assertEquals("gYTG", vehicle.sn)
+    }
+
+    @Test
     fun parsesMotoMoriniHashSeparatedQr() {
         val vehicle = MotoVehicle.parse(
             "http://admin.motomorini.com/app.html?Wifi=ML174167#12345678#dc0d30da1b6c" +
