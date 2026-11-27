@@ -83,7 +83,16 @@ class CarPlusBridgeService : Service() {
         MiniState.serviceActive = true
         MiniState.update("正在启动 CarLife 接收")
         // 发送端检测与拉起统一走 SenderRouter（百度 CarLife+ 优先，OPPO Car+ 兜底）。
-        SenderRouter.launch(applicationContext, MiniState::log, force = false)
+        val senderLaunched = SenderRouter.launch(applicationContext, MiniState::log, force = false)
+        if (!senderLaunched) {
+            // 发送端未安装/拉起失败时不要启动接收循环，否则只会无限探测端口
+            MiniState.update("未安装发送端或启动失败，请安装百度 CarLife+ 后重新启动")
+            MiniState.setCar("请安装百度 CarLife+（com.baidu.carlife）", Stage.ERROR)
+            MiniState.running = false
+            MiniState.serviceActive = false
+            stopSelf()
+            return
+        }
         val pipe = MiniVideoPipeline(MiniState::log)
         pipe.start()
         pipeline = pipe

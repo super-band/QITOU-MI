@@ -10,6 +10,7 @@ import app.qitou.bridge.MiniState
 import app.qitou.bridge.Stage
 import app.qitou.bridge.aa.AaLog
 import app.qitou.bridge.aa.VideoDecoder
+import app.qitou.bridge.sender.SenderRouter
 import java.io.DataInputStream
 import java.io.InputStream
 import java.io.OutputStream
@@ -100,32 +101,47 @@ class CarPlusVideoReceiver(
         startTouchWorker()
         thread(name = "carplus-session", isDaemon = true) {
             val startedAt = SystemClock.elapsedRealtime()
+            var failures = 0
             while (running.get()) {
+                var senderMissing = false
                 try {
                     if (connectSession()) {
                         startupWarned = false
+                        failures = 0
                         waitForSession()
-                    } else if (!startupWarned &&
-                        SystemClock.elapsedRealtime() - startedAt > STARTUP_TIMEOUT_MS
-                    ) {
-                        startupWarned = true
-                        log("[CAR+] local CarLife ports did not appear — start 无线连接 in the sender app")
-                        MiniState.setCar(
-                            "未找到 CarLife 发送端，请在百度 CarLife+ 中选择「无线连接」",
-                            Stage.ERROR,
-                        )
+                    } else {
+                        failures++
+                        if (SenderRouter.detect(context) == null) {
+                            // 发送端根本没装：别再空转探测端口，提示安装后退出
+                            log("[CAR+] 发送端未安装，停止重连")
+                            senderMissing = true
+                            running.set(false)
+                        } else if (!startupWarned &&
+                            SystemClock.elapsedRealtime() - startedAt > STARTUP_TIMEOUT_MS
+                        ) {
+                            startupWarned = true
+                            log("[CAR+] local CarLife ports did not appear — start 无线连接 in the sender app")
+                            MiniState.setCar(
+                                "未找到 CarLife 发送端，请在百度 CarLife+ 中选择「无线连接」",
+                                Stage.ERROR,
+                            )
+                        }
                     }
                 } catch (error: Exception) {
                     if (running.get()) log("[CAR+] bridge retry: ${error.message}")
                 } finally {
                     closeSession()
                     MiniState.update(fps = 0)
-                    MiniState.setCar(
-                        if (running.get()) "CarLife 连接中断，正在重连" else "已停止",
-                        if (running.get()) Stage.ERROR else Stage.OFF,
-                    )
+                    when {
+                        senderMissing -> MiniState.setCar(
+                            "请安装百度 CarLife+（com.baidu.carlife）",
+                            Stage.ERROR,
+                        )
+                        running.get() -> MiniState.setCar("CarLife 连接中断，正在重连", Stage.ERROR)
+                        else -> MiniState.setCar("已停止", Stage.OFF)
+                    }
                 }
-                if (running.get()) Thread.sleep(1_500)
+                if (running.get()) Thread.sleep(if (failures < 3) 1_500L else 5_000L)
             }
         }
     }
