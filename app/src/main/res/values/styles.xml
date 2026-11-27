@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.QITOU" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/app_background_top</item>
+        <item name="android:colorAccent">@color/accent_primary</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:alertDialogTheme">@style/Theme.QITOU.Dialog</item>
+    </style>
+
+    <style name="Theme.QITOU.Dialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_qitou_dialog</item>
+        <item name="android:colorAccent">@color/dialog_action</item>
+        <item name="android:colorControlActivated">@color/dialog_action</item>
+        <item name="android:colorBackground">@color/dialog_surface</item>
+        <item name="android:colorBackgroundFloating">@color/dialog_surface</item>
+        <item name="android:textColorPrimary">@color/dialog_title</item>
+        <item name="android:textColorSecondary">@color/dialog_message</item>
+        <item name="android:textColorHint">@color/dialog_hint</item>
+        <item name="android:textAppearanceMedium">@style/TextAppearance.QITOU.Dialog.Message</item>
+        <item name="android:windowTitleStyle">@style/TextAppearance.QITOU.Dialog.Title</item>
+        <item name="android:statusBarColor">@color/app_background_top</item>
+        <item name="android:navigationBarColor">@color/app_background_bottom</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:backgroundDimAmount">0.52</item>
+        <item name="android:windowMinWidthMajor">80%</item>
+        <item name="android:windowMinWidthMinor">90%</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+        <item name="android:buttonBarButtonStyle">@style/Widget.QITOU.Dialog.Button</item>
+    </style>
+
+    <style name="TextAppearance.QITOU.Dialog.Title" parent="@android:style/TextAppearance.Material.Title">
+        <item name="android:textColor">@color/dialog_title</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.QITOU.Dialog.Message" parent="@android:style/TextAppearance.Material.Medium">
+        <item name="android:textColor">@color/dialog_message</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:lineSpacingMultiplier">1.08</item>
+    </style>
+
+    <style name="Widget.QITOU.Dialog.Button" parent="@android:style/Widget.Material.Button.Borderless">
+        <item name="android:textColor">@color/qitou_dialog_button</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+</resources>

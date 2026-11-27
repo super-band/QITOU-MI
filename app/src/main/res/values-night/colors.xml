@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="app_background_top">#070A0F</color>
+    <color name="app_background_bottom">#121922</color>
+
+    <color name="surface_card">#141B25</color>
+    <color name="surface_preview">#0D121A</color>
+    <color name="text_on_video">#B9C6D2</color>
+    <color name="stroke_card">#2B3A4A</color>
+    <color name="stroke_preview">#37485C</color>
+
+    <color name="text_heading">#F7FAFE</color>
+    <color name="text_body">#B9C9DB</color>
+    <color name="text_label">#9EADC0</color>
+    <color name="text_muted">#8799AE</color>
+
+    <color name="accent_primary">#91DAFF</color>
+    <color name="accent_on_primary">#111923</color>
+    <color name="action_stopped">#495C70</color>
+    <color name="text_on_stopped">#FFFFFF</color>
+
+    <color name="success">#79DDAE</color>
+    <color name="warning">#F5C46B</color>
+    <color name="error">#FF8282</color>
+    <color name="status_off">#9EAEC2</color>
+
+    <color name="button_secondary_surface">#202833</color>
+    <color name="button_secondary_text">#FFFFFF</color>
+    <color name="button_secondary_stroke">#36475A</color>
+
+    <color name="dialog_surface">#161E29</color>
+    <color name="dialog_stroke">#35495F</color>
+    <color name="dialog_title">#F4F8FC</color>
+    <color name="dialog_message">#B9C9DB</color>
+    <color name="dialog_hint">#8799AE</color>
+    <color name="dialog_action">#91DAFF</color>
+    <color name="dialog_action_pressed">#C0EEFF</color>
+    <color name="dialog_action_disabled">#617184</color>
+    <color name="dialog_input_surface">#0F1620</color>
+    <color name="dialog_input_text">#F4F8FC</color>
+    <color name="dialog_input_hint">#8799AE</color>
+    <color name="dialog_input_stroke">#35495F</color>
+    <color name="dialog_code_text">#DCE4ED</color>
+</resources>

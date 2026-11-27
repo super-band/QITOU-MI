@@ -1,0 +1,25 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+*.iml
+
+# Local signing material must never be committed.
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+keystore.properties
+qitou-release.properties
+
+# Local build and support artifacts.
+artifacts/
+captures/
+*.apk
+*.aab
+*.log
+
+.DS_Store
+Thumbs.db
