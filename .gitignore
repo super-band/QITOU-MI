@@ -23,3 +23,7 @@ captures/
 
 .DS_Store
 Thumbs.db
+runs-poll.json
+run-logs/
+run-logs.zip
+jobs.json
