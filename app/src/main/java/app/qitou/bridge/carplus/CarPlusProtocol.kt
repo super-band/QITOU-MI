@@ -36,11 +36,17 @@ internal object CarPlusProtocol {
     const val HU_STATISTICS = 98343
     const val MD_INFO = 65540
     const val HU_INFO = 98307
+    const val HU_AUTHEN_REQUEST = 98376
+    const val MD_AUTHEN_RESPONSE = 65609
+    const val HU_AUTHEN_RESULT = 98378
+    const val MD_AUTHEN_RESULT = 65611
+    const val HU_AUTHEN_ACK = 98380
     const val HU_VIDEO_ENC_INIT = 98311
     const val VIDEO_ENC_START = 98313
     const val MD_VIDEO_ENC_INIT = 65544
     const val VIDEO_ENC_DONE = 65551
     const val HU_FEATURE_CONFIG = 98386
+    const val MD_FEATURE_CONFIG = 65617
     const val MD_FEATURE_CONFIG_DONE = 65570
     const val MD_MODULE_STATUS = 65574
     const val HU_MODULE_CONTROL = 98344
@@ -104,12 +110,49 @@ internal object CarPlusProtocol {
         return out
     }
 
-    fun videoEncoderInfo(width: Int, height: Int, fps: Int): ByteArray =
-        varint(1, width) +
-            varint(2, height) +
-            varint(3, fps) +
-            varint(8, 0) +
-            varint(9, 0)
+    /**
+     * HU→MD 编码参数申请（98311）。
+     *
+     * `CarlifeVideoEncoderInfo` 共 9 个字段（CarPToCarL 对 CarLife+ 8.8.5 逆向实证）：
+     * ```
+     * 1 width  int32 | 2 height int32 | 3 frameRate int32
+     * 4 saveAreaWidth int32 | 5 saveAreaHeight int32 | 6 saveAreaX int32 | 7 saveAreaY int32
+     * 8 drawUIOutsideSafeArea bool | 9 needAdapterScreen bool
+     * ```
+     * 字段 4~9 会被打包进厂商适配层的 `carlife_encode_format`，由厂商层决定最终
+     * `MediaFormat` 的 width/height（返回非 null 时覆盖引擎自己算的值）。只发
+     * width/height 时厂商层拿不到「车机真实画布 / 安全区 / 是否需适配」，会按自己的
+     * 规则定尺寸——小米 CarWith 实测回 480x1280 竖屏流。
+     *
+     * @param needAdapterScreen 车机画面比例与编码比例不一致时请引擎做适配（等比，不拉伸）
+     * @param saveArea 车机安全区 [宽, 高, x, y]；null 表示不声明
+     * @param drawUIOutsideSafeArea 允许 UI 画出安全区
+     */
+    fun videoEncoderInfo(
+        width: Int,
+        height: Int,
+        fps: Int,
+        needAdapterScreen: Boolean = true,
+        saveArea: IntArray? = null,
+        drawUIOutsideSafeArea: Boolean = false,
+    ): ByteArray {
+        var out = varint(1, width) + varint(2, height) + varint(3, fps)
+        if (saveArea != null && saveArea.size == 4) {
+            out += varint(4, saveArea[0]) +
+                varint(5, saveArea[1]) +
+                varint(6, saveArea[2]) +
+                varint(7, saveArea[3])
+        }
+        if (drawUIOutsideSafeArea) out += varint(8, 1)
+        if (needAdapterScreen) out += varint(9, 1)
+        return out
+    }
+
+    fun authenRequest(randomValue: String): ByteArray =
+        text(1, randomValue)
+
+    fun authenResult(success: Boolean): ByteArray =
+        varint(1, if (success) 1 else 0)
 
     fun moduleControl(ids: List<Int>): ByteArray {
         var out = varint(1, ids.size)

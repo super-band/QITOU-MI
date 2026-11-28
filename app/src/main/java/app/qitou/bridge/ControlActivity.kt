@@ -36,7 +36,6 @@ class ControlActivity : Activity() {
 
         preview = SurfaceView(this).apply {
             setBackgroundColor(Color.BLACK)
-            holder.setFixedSize(1280, 720)
             holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) = Unit
                 override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {

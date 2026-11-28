@@ -43,6 +43,7 @@ class MiniVideoPipeline(
         sourceWidth = width
         sourceHeight = height
         compositor.updateCaptureSize(width, height)
+        MiniState.setSourceSize(width, height)
         log("[MINI] source size updated to ${width}x$height")
     }
 
@@ -133,6 +134,15 @@ class MiniVideoPipeline(
         MiniState.updateEncoderCodec(
             "${activeCodec.name} · " +
                 CodecCandidatePolicy.displayKind(selected?.hardware == true),
+        )
+        MiniState.setOutputSize(
+            encodeWidth,
+            encodeHeight,
+            when (fit) {
+                ScreenFit.FIT -> "完整显示"
+                ScreenFit.FILL -> "铺满裁切"
+                ScreenFit.STRETCH -> "拉伸铺满"
+            },
         )
     }
 

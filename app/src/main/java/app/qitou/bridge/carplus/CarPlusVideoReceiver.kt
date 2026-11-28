@@ -73,6 +73,8 @@ class CarPlusVideoReceiver(
     @Volatile private var lastTouchProbeAt = 0L
     @Volatile private var touchMissLogged = false
     @Volatile private var startupWarned = false
+    @Volatile private var swapRetryDone = false
+    private val unknownCommands = java.util.Collections.synchronizedSet(mutableSetOf<Int>())
 
     private val decoder = VideoDecoder().apply {
         fallbackWidth = requestedWidth
@@ -80,6 +82,13 @@ class CarPlusVideoReceiver(
         dimensionsListener = object : app.qitou.bridge.aa.VideoDimensionsListener {
             override fun onVideoDimensionsChanged(width: Int, height: Int) {
                 log("[CAR+] stream ${width}x$height")
+                if (requestedWidth > requestedHeight && width == requestedHeight && height == requestedWidth) {
+                    log(
+                        "[CAR+] ⚠ stream is exactly swapped vs the ${requestedWidth}x$requestedHeight request " +
+                            "(vendor encoder override?) — re-requesting 98311 with swapped dims",
+                    )
+                    retrySwappedEncoderInit()
+                }
                 MiniState.setCar("CarLife 画面 ${width}×$height", Stage.WAIT)
                 onVideoSize(width, height)
             }
@@ -209,6 +218,8 @@ class CarPlusVideoReceiver(
         featureConfigAcked = false
         starterScheduled = false
         readyFired = false
+        swapRetryDone = false
+        unknownCommands.clear()
         videoDead = false
         val addrs = senderAddresses()
         log("[CAR+] probing CarLife sender ports on ${addrs.joinToString("/")} …")
@@ -310,18 +321,33 @@ class CarPlusVideoReceiver(
                 send(CarPlusProtocol.HU_STATISTICS, CarPlusProtocol.statistics())
             }
             CarPlusProtocol.MD_INFO -> {
-                log("[CAR+] phone CarLife sender identified (${payload.size} bytes)")
+                log(
+                    "[CAR+] phone CarLife sender identified (${payload.size} bytes) " +
+                        "raw=${payload.take(96).joinToString(" ") { "%02x".format(it.toInt() and 0xff) }}",
+                )
                 send(
                     CarPlusProtocol.HU_INFO,
                     CarPlusProtocol.headUnitInfo("${requestedWidth}x$requestedHeight"),
                 )
                 scheduleFeatureAndEncoder()
             }
+            CarPlusProtocol.MD_AUTHEN_RESPONSE -> {
+                log("[CAR+] HU authentication challenge answered (${payload.size} bytes)")
+                send(CarPlusProtocol.HU_AUTHEN_RESULT, CarPlusProtocol.authenResult(true))
+            }
+            CarPlusProtocol.MD_AUTHEN_RESULT -> {
+                log("[CAR+] HU authentication accepted (${payload.size} bytes)")
+                send(CarPlusProtocol.HU_AUTHEN_ACK, ByteArray(0))
+            }
             CarPlusProtocol.MD_MODULE_STATUS -> {
                 val modules = CarPlusProtocol.parseModuleStatus(payload)
                 if (modules.isNotEmpty() && modules.any { it.second == 0 }) {
                     send(CarPlusProtocol.HU_MODULE_CONTROL, CarPlusProtocol.moduleControl(modules.map { it.first }))
                 }
+            }
+            CarPlusProtocol.MD_FEATURE_CONFIG -> {
+                log("[CAR+] CarLife host requested feature configuration")
+                send(CarPlusProtocol.HU_FEATURE_CONFIG, CarPlusProtocol.featureConfig())
             }
             CarPlusProtocol.MD_FEATURE_CONFIG_DONE -> {
                 featureConfigAcked = true
@@ -332,12 +358,20 @@ class CarPlusVideoReceiver(
                 val width = fields[1]?.toInt() ?: requestedWidth
                 val height = fields[2]?.toInt() ?: requestedHeight
                 val fps = fields[3]?.toInt()?.takeIf { it > 0 } ?: requestedFps
-                log("[CAR+] encoder confirmed ${width}x$height@$fps")
+                log(
+                    "[CAR+] encoder confirmed ${width}x$height@$fps " +
+                        "raw=${payload.take(48).joinToString(" ") { "%02x".format(it.toInt() and 0xff) }}",
+                )
                 send(CarPlusProtocol.VIDEO_ENC_START, ByteArray(0))
             }
             CarPlusProtocol.VIDEO_ENC_DONE -> sendEncoderInit()
             in CarPlusProtocol.MD_IGNORED_IDS -> Unit
-            else -> Unit
+            else -> if (unknownCommands.add(type)) {
+                log(
+                    "[CAR+] unhandled command 0x${type.toString(16)} (${payload.size} bytes) " +
+                        "head=${payload.take(16).joinToString(" ") { "%02x".format(it.toInt() and 0xff) }}",
+                )
+            }
         }
     }
 
@@ -362,8 +396,42 @@ class CarPlusVideoReceiver(
         log("[CAR+] requesting ${requestedWidth}x$requestedHeight@$requestedFps video")
         send(
             CarPlusProtocol.HU_VIDEO_ENC_INIT,
-            CarPlusProtocol.videoEncoderInfo(requestedWidth, requestedHeight, requestedFps),
+            CarPlusProtocol.videoEncoderInfo(
+                requestedWidth,
+                requestedHeight,
+                requestedFps,
+                // 关键：needAdapterScreen=1 让引擎/厂商层按车机画布做等比适配并采用本请求
+                // 尺寸编码；只发 width/height 时小米 CarWith 的厂商层按手机方向自行定尺寸
+                // （实测回 480x1280 竖屏流）。saveArea 暂不声明——仪表条安全区由本地
+                // CanvasInsets 处理，避免双重避让把画面缩得更小。
+                needAdapterScreen = true,
+                saveArea = null,
+                drawUIOutsideSafeArea = false,
+            ),
         )
+    }
+
+    /**
+     * 流尺寸与请求宽高完全互换（如请求 1280x480 却收 480x1280）时，用互换后的尺寸
+     * 重发一次 98311 + 98313。若发送端是按「宽高反读」的厂商适配层，重发后即得横屏流。
+     * 只重试一次，避免与发送端来回拉锯。
+     */
+    private fun retrySwappedEncoderInit() {
+        if (swapRetryDone) return
+        if (!running.get() || sessionDown.get()) return
+        swapRetryDone = true
+        send(
+            CarPlusProtocol.HU_VIDEO_ENC_INIT,
+            CarPlusProtocol.videoEncoderInfo(
+                requestedHeight,
+                requestedWidth,
+                requestedFps,
+                needAdapterScreen = true,
+                saveArea = null,
+                drawUIOutsideSafeArea = false,
+            ),
+        )
+        send(CarPlusProtocol.VIDEO_ENC_START, ByteArray(0))
     }
 
     private fun readVideo(socket: Socket) {

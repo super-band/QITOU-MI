@@ -318,13 +318,17 @@ class MotoLink(
     private fun startHeartbeat(socket: Socket) {
         val out = socket.getOutputStream()
         val t = thread(name = "pw-heartbeat", isDaemon = true) {
-            while (running.get() && !socket.isClosed) {
-                Thread.sleep(2_000)
-                try {
-                    PxcFrame(PxcFrame.CMD_HEARTBEAT, ByteArray(0)).write(out)
-                } catch (_: Exception) {
-                    break
+            try {
+                while (running.get() && !socket.isClosed) {
+                    Thread.sleep(2_000)
+                    try {
+                        PxcFrame(PxcFrame.CMD_HEARTBEAT, ByteArray(0)).write(out)
+                    } catch (_: Exception) {
+                        break
+                    }
                 }
+            } catch (_: InterruptedException) {
+                // stop() interrupts this thread; exit quietly instead of crashing.
             }
         }
         heartbeats += t
