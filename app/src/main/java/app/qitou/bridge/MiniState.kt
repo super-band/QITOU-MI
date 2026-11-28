@@ -147,7 +147,8 @@ object MiniState {
         attach(context)
         runCatching { logExecutor.submit {}.get(2, TimeUnit.SECONDS) }
         val shareDir = File(context.cacheDir, "shared").apply { mkdirs() }
-        val out = File(shareDir, "QITOU-support.log")
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val out = File(shareDir, "QITOU-support-$stamp.log")
         val header = buildString {
             appendLine("${Brand.CHINESE_NAME} ${Brand.LATIN_NAME} diagnostic log")
             appendLine("time=${Date()}")

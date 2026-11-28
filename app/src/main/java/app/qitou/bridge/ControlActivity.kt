@@ -129,7 +129,10 @@ class ControlActivity : Activity() {
         val pipe = MiniRuntime.pipeline
         val holder = preview.holder
         if (attached || pipe == null || holder.surface?.isValid != true) return
-        pipe.attachPreview(holder.surface, 1280, 480)
+        val frame = holder.surfaceFrame
+        val w = if (frame.width() > 0) frame.width() else 1280
+        val h = if (frame.height() > 0) frame.height() else 720
+        pipe.attachPreview(holder.surface, w, h)
         attached = true
     }
 
@@ -193,7 +196,9 @@ class ControlActivity : Activity() {
 
     private fun mapPoint(x: Float, y: Float, w: Int, h: Int): Pair<Int, Int>? {
         if (w <= 0 || h <= 0) return null
-        val sourceAspect = 1280f / 480f
+        val srcW = MiniRuntime.pipeline?.streamWidth ?: 1280
+        val srcH = MiniRuntime.pipeline?.streamHeight ?: 480
+        val sourceAspect = srcW.toFloat() / srcH
         val viewAspect = w.toFloat() / h
         val drawW: Float
         val drawH: Float
@@ -207,8 +212,8 @@ class ControlActivity : Activity() {
         val left = (w - drawW) / 2f
         val top = (h - drawH) / 2f
         if (x < left || x >= left + drawW || y < top || y >= top + drawH) return null
-        return (((x - left) * 1280 / drawW).toInt().coerceIn(0, 1279)) to
-            (((y - top) * 480 / drawH).toInt().coerceIn(0, 479))
+        return (((x - left) * srcW / drawW).toInt().coerceIn(0, srcW - 1)) to
+            (((y - top) * srcH / drawH).toInt().coerceIn(0, srcH - 1))
     }
 
     private fun renderFps() {

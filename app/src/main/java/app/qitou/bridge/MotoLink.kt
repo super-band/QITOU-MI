@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.LinkAddress
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.SystemClock
 import org.json.JSONObject
@@ -12,12 +13,16 @@ import java.io.BufferedInputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
@@ -36,8 +41,10 @@ class MotoLink(
     private val cycleLock = Any()
     private val rearming = java.util.concurrent.atomic.AtomicBoolean(false)
     @Volatile private var network: Network? = null
-    @Volatile private var gateway: Inet4Address? = null
     @Volatile private var localIp: Inet4Address? = null
+    @Volatile private var bikeAddrs: List<Inet4Address> = emptyList()
+    @Volatile private var lastKnownBike: Inet4Address? = null
+    @Volatile private var lastScanAt = 0L
     @Volatile private var captureSeen = false
     @Volatile private var frames = 0
     @Volatile private var lastBikeAt = 0L
@@ -55,7 +62,7 @@ class MotoLink(
                     MiniState.update("等待车机 Wi‑Fi 恢复")
                     MiniState.setPxc("等待车机 Wi-Fi", Stage.WAIT)
                 } else {
-                    log("[PXC] phone=${localIp?.hostAddress} bike=${gateway?.hostAddress}")
+                    log("[PXC] phone=${localIp?.hostAddress} bike candidates=${bikeAddrs.joinToString { it.hostAddress ?: "?" }}")
                     listen()
                     probe()
                 }
@@ -76,15 +83,53 @@ class MotoLink(
         val caps = cm.getNetworkCapabilities(net) ?: return false
         if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return false
         val props = cm.getLinkProperties(net) ?: return false
-        val gw = props.routes.firstOrNull { it.isDefaultRoute }?.gateway as? Inet4Address ?: return false
         val ip = props.linkAddresses
             .map(LinkAddress::getAddress)
             .filterIsInstance<Inet4Address>()
             .firstOrNull { !it.isLoopbackAddress } ?: return false
         network = net
-        gateway = gw
         localIp = ip
+        bikeAddrs = resolveBikeAddresses(props, ip)
         return true
+    }
+
+    /**
+     * 车机地址候选：已验证过的地址、默认路由网关、DHCP 网关/服务器、网段 .1/.254。
+     * 车机 SoftAP 的默认路由网关常为 0.0.0.0（on-link），不能直接拿来连。
+     */
+    private fun resolveBikeAddresses(props: android.net.LinkProperties, ip: Inet4Address): List<Inet4Address> {
+        val out = linkedSetOf<Inet4Address>()
+        lastKnownBike?.let { out += it }
+        props.routes.firstOrNull { it.isDefaultRoute }?.gateway?.let { gw ->
+            if (gw is Inet4Address && !gw.isAnyLocalAddress && !gw.isLoopbackAddress) out += gw
+        }
+        runCatching {
+            val dhcp = context.getSystemService(WifiManager::class.java)?.dhcpInfo
+            dhcp?.gateway?.toInet4()?.let { out += it }
+            dhcp?.serverAddress?.toInet4()?.let { out += it }
+        }
+        val b = ip.address
+        for (host in intArrayOf(1, 254)) {
+            runCatching {
+                out += InetAddress.getByAddress(byteArrayOf(b[0], b[1], b[2], host.toByte())) as Inet4Address
+            }
+        }
+        return out.filter { it != ip }
+    }
+
+    /** DhcpInfo 的 int 是小端序地址。 */
+    private fun Int.toInet4(): Inet4Address? {
+        if (this == 0 || this == -1) return null
+        return runCatching {
+            InetAddress.getByAddress(
+                byteArrayOf(
+                    (this and 0xff).toByte(),
+                    ((this shr 8) and 0xff).toByte(),
+                    ((this shr 16) and 0xff).toByte(),
+                    ((this shr 24) and 0xff).toByte(),
+                ),
+            ) as Inet4Address
+        }.getOrNull()
     }
 
     private fun listen() {
@@ -130,31 +175,77 @@ class MotoLink(
 
     private fun probe() {
         val net = network ?: return
-        val bike = gateway ?: return
         lastProbeAt = SystemClock.elapsedRealtime()
-        repeat(4) { attempt ->
+        for (bike in bikeAddrs) {
             if (!running.get()) return
-            try {
-                val socket = net.socketFactory.createSocket()
-                socket.connect(InetSocketAddress(bike, PORT_PROBE), 2500)
-                socket.soTimeout = 3500
-                val json = """{"phoneType":"Android","packageName":"com.cfmoto.cfmotointernational"}"""
-                PxcFrame(PxcFrame.CMD_MDNS_RESPOND, json.toByteArray()).write(socket.getOutputStream())
-                val ack = PxcFrame.read(socket.getInputStream())
-                socket.close()
-                if (ack?.cmd == PxcFrame.CMD_MDNS_RESPOND_ACK) {
-                    log("[PXC] probe accepted")
-                    MiniState.update("已发现车机，等待 PXC 握手")
-                    MiniState.setPxc("已发现车机，等待握手", Stage.WAIT)
-                    return
-                }
-            } catch (error: Exception) {
-                log("[PXC] probe ${attempt + 1} failed: ${error.javaClass.simpleName}")
+            if (tryProbe(net, bike)) {
+                lastKnownBike = bike
+                log("[PXC] probe accepted (${bike.hostAddress})")
+                MiniState.update("已发现车机，等待 PXC 握手")
+                MiniState.setPxc("已发现车机，等待握手", Stage.WAIT)
+                return
             }
-            Thread.sleep(700L * (attempt + 1))
         }
+        // 候选都失败时扫一遍网段找 10930（车机地址可能不在常规项里）。
+        val now = SystemClock.elapsedRealtime()
+        if (lastKnownBike == null && now - lastScanAt > 25_000L) {
+            lastScanAt = now
+            val scanned = scanSubnet(net)
+            if (scanned != null && running.get() && tryProbe(net, scanned)) {
+                lastKnownBike = scanned
+                log("[PXC] probe accepted (${scanned.hostAddress}, subnet scan)")
+                MiniState.update("已发现车机，等待 PXC 握手")
+                MiniState.setPxc("已发现车机，等待握手", Stage.WAIT)
+                return
+            }
+        }
+        log("[PXC] 未发现 MotoPlay（已试 ${bikeAddrs.joinToString { it.hostAddress ?: "?" }}）")
         MiniState.update("未发现 MotoPlay 服务，请保持仪表手机互联页面")
         MiniState.setPxc("未发现 MotoPlay，自动重试", Stage.ERROR)
+    }
+
+    private fun tryProbe(net: Network, bike: Inet4Address): Boolean = try {
+        val socket = net.socketFactory.createSocket()
+        socket.connect(InetSocketAddress(bike, PORT_PROBE), 1_200)
+        socket.soTimeout = 3_500
+        val json = """{"phoneType":"Android","packageName":"com.cfmoto.cfmotointernational"}"""
+        PxcFrame(PxcFrame.CMD_MDNS_RESPOND, json.toByteArray()).write(socket.getOutputStream())
+        val ack = PxcFrame.read(socket.getInputStream())
+        socket.close()
+        ack?.cmd == PxcFrame.CMD_MDNS_RESPOND_ACK
+    } catch (error: Exception) {
+        log("[PXC] probe ${bike.hostAddress}:$PORT_PROBE ${error.javaClass.simpleName}")
+        false
+    }
+
+    /** 并发扫网段的 PORT_PROBE 端口，返回第一个应答的地址。 */
+    private fun scanSubnet(net: Network): Inet4Address? {
+        val base = localIp?.address ?: return null
+        val self = localIp
+        val found = ConcurrentLinkedQueue<Inet4Address>()
+        val pool = Executors.newFixedThreadPool(32)
+        try {
+            val tasks = (1..254).map { host ->
+                pool.submit {
+                    if (found.isNotEmpty() || !running.get()) return@submit
+                    val candidate = runCatching {
+                        InetAddress.getByAddress(byteArrayOf(base[0], base[1], base[2], host.toByte())) as Inet4Address
+                    }.getOrNull() ?: return@submit
+                    if (candidate == self) return@submit
+                    try {
+                        net.socketFactory.createSocket().use { s ->
+                            s.connect(InetSocketAddress(candidate, PORT_PROBE), 300)
+                        }
+                        found += candidate
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            tasks.forEach { runCatching { it.get(4, TimeUnit.SECONDS) } }
+        } finally {
+            pool.shutdownNow()
+        }
+        return found.firstOrNull()
     }
 
     private fun controlLoop(socket: Socket) {

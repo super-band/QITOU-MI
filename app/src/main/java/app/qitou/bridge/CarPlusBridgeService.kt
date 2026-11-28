@@ -125,6 +125,7 @@ class CarPlusBridgeService : Service() {
             requestedFps = 30,
             onVideoSize = { w, h ->
                 MiniState.log("[MINI] CarLife stream ${w}x$h")
+                pipeline?.updateSourceSize(w, h)
             },
             onReady = {
                 if (!videoLive) {

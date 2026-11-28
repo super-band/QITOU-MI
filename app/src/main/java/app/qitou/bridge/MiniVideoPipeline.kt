@@ -11,12 +11,14 @@ import kotlin.concurrent.thread
 /** Minimal Car+ H.264 decode -> 800x384 encode pipeline for the focused product. */
 class MiniVideoPipeline(
     private val log: (String) -> Unit,
-    private val sourceWidth: Int = 1280,
-    private val sourceHeight: Int = 480,
+    initialSourceWidth: Int = 1280,
+    initialSourceHeight: Int = 480,
     private val bottomInset: Int = 80,
 ) {
     private val compositor = AaCompositor(log)
     private val frames = LinkedBlockingDeque<ByteArray>(8)
+    @Volatile private var sourceWidth = initialSourceWidth
+    @Volatile private var sourceHeight = initialSourceHeight
     @Volatile private var codec: MediaCodec? = null
     @Volatile private var inputSurface: Surface? = null
     @Volatile private var running = false
@@ -25,6 +27,27 @@ class MiniVideoPipeline(
     private var drain: Thread? = null
 
     val decoderInputSurface: Surface? get() = compositor.inputSurface
+    val streamWidth: Int get() = sourceWidth
+    val streamHeight: Int get() = sourceHeight
+
+    /**
+     * CarWith 的实际编码尺寸随手机方向变化（1280x480 / 480x1280），SPS 解析出来后
+     * 必须同步给合成器，否则预览/输出按错误宽高比采样（花屏拉丝的根源）。
+     */
+    fun updateSourceSize(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        if (width == sourceWidth && height == sourceHeight) return
+        sourceWidth = width
+        sourceHeight = height
+        compositor.updateCaptureSize(width, height)
+        compositor.setFit(fitForSource())
+        log("[MINI] source size → ${width}x$height")
+    }
+
+    fun updatePreviewSize(width: Int, height: Int) = compositor.updatePreviewSize(width, height)
+
+    private fun fitForSource(): ScreenFit =
+        if (sourceHeight > sourceWidth) ScreenFit.FIT else ScreenFit.FILL
 
     fun start() {
         if (running) return
@@ -54,7 +77,7 @@ class MiniVideoPipeline(
         inputSurface = c.createInputSurface()
         c.start()
         codec = c
-        compositor.setOutput(inputSurface!!, width, height, sourceWidth, sourceHeight, ScreenFit.FILL)
+        compositor.setOutput(inputSurface!!, width, height, sourceWidth, sourceHeight, fitForSource())
         drain = thread(name = "carplus-encode", isDaemon = true) { drainLoop(c) }
         log("[MINI] encoder started ${width}x$height")
     }

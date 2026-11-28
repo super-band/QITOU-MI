@@ -161,12 +161,13 @@ class AaCompositor(private val log: (String) -> Unit) {
             try {
                 bufW = cw; bufH = ch
                 if (::surfaceTexture.isInitialized) surfaceTexture.setDefaultBufferSize(cw, ch)
+                computePreviewRect()
                 if (canvasW > 0 && canvasH > 0) {
                     srcW = cw; srcH = ch
                     computeViewport()
                     log("[COMPOSITOR] capture size → ${cw}x$ch → draw rect=${vpW}x$vpH @($vpX,$vpY)")
-                    if (hasContent) drawFrame()
                 }
+                if (hasContent) drawFrame()
             } catch (e: Exception) {
                 log("[COMPOSITOR] updateCaptureSize failed: $e")
             }
@@ -189,6 +190,16 @@ class AaCompositor(private val log: (String) -> Unit) {
             } catch (e: Exception) {
                 log("[COMPOSITOR] setOutput failed: $e")
             }
+        }
+    }
+
+    /** Source orientation changed after setOutput — recompute the draw rect for a new fit mode. */
+    fun setFit(fit: ScreenFit) {
+        handler.post {
+            fitMode = fit
+            computeViewport()
+            if (hasContent && windowSurface != EGL14.EGL_NO_SURFACE) drawFrame()
+            log("[COMPOSITOR] fit → $fit → draw rect=${vpW}x$vpH @($vpX,$vpY)")
         }
     }
 

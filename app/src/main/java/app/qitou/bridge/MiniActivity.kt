@@ -289,7 +289,10 @@ class MiniActivity : ComponentActivity() {
                     width: Int,
                     height: Int,
                 ) {
-                    surfaceTexture.setDefaultBufferSize(1280, 720)
+                    surfaceTexture.setDefaultBufferSize(
+                        if (width > 0) width else 1280,
+                        if (height > 0) height else 720,
+                    )
                     attachPreview()
                 }
 
@@ -297,7 +300,18 @@ class MiniActivity : ComponentActivity() {
                     surfaceTexture: SurfaceTexture,
                     width: Int,
                     height: Int,
-                ) = Unit
+                ) {
+                    surfaceTexture.setDefaultBufferSize(
+                        if (width > 0) width else 1280,
+                        if (height > 0) height else 720,
+                    )
+                    if (attached) {
+                        MiniRuntime.pipeline?.updatePreviewSize(
+                            if (width > 0) width else 1280,
+                            if (height > 0) height else 720,
+                        )
+                    }
+                }
 
                 override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
                     detachPreview()
@@ -886,7 +900,9 @@ class MiniActivity : ComponentActivity() {
         val texture = preview.surfaceTexture ?: return
         val surface = Surface(texture)
         previewSurface = surface
-        pipe.attachPreview(surface, 1280, 720)
+        val w = if (preview.width > 0) preview.width else 1280
+        val h = if (preview.height > 0) preview.height else 720
+        pipe.attachPreview(surface, w, h)
         attached = true
         previewHint.visibility = View.GONE
     }
@@ -953,7 +969,9 @@ class MiniActivity : ComponentActivity() {
 
     private fun mapPoint(x: Float, y: Float, w: Int, h: Int): Pair<Int, Int>? {
         if (w <= 0 || h <= 0) return null
-        val sourceAspect = 1280f / 480f
+        val srcW = MiniRuntime.pipeline?.streamWidth ?: 1280
+        val srcH = MiniRuntime.pipeline?.streamHeight ?: 480
+        val sourceAspect = srcW.toFloat() / srcH
         val viewAspect = w.toFloat() / h
         val drawW: Float
         val drawH: Float
@@ -967,15 +985,17 @@ class MiniActivity : ComponentActivity() {
         val left = (w - drawW) / 2f
         val top = (h - drawH) / 2f
         if (x < left || x >= left + drawW || y < top || y >= top + drawH) return null
-        return (((x - left) * 1280 / drawW).toInt().coerceIn(0, 1279)) to
-            (((y - top) * 480 / drawH).toInt().coerceIn(0, 479))
+        return (((x - left) * srcW / drawW).toInt().coerceIn(0, srcW - 1)) to
+            (((y - top) * srcH / drawH).toInt().coerceIn(0, srcH - 1))
     }
 
     private fun render() {
         if (!::status.isInitialized) return
         status.text = MiniState.status
         fps.text = if (MiniState.framesPerSecond > 0) {
-            "${MiniState.framesPerSecond} fps · 1280×480 控制源 · 800×384 车机输出"
+            val srcW = MiniRuntime.pipeline?.streamWidth ?: 1280
+            val srcH = MiniRuntime.pipeline?.streamHeight ?: 480
+            "${MiniState.framesPerSecond} fps · ${srcW}×${srcH} 控制源 · 800×384 车机输出"
         } else {
             "等待 CarLife 画面"
         }
