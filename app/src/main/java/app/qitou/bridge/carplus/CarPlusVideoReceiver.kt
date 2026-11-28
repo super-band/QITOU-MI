@@ -74,6 +74,9 @@ class CarPlusVideoReceiver(
     @Volatile private var touchMissLogged = false
     @Volatile private var startupWarned = false
     @Volatile private var swapRetryDone = false
+    @Volatile private var confirmedWidth = 0
+    @Volatile private var confirmedHeight = 0
+    @Volatile private var lastTouchLogMs = 0L
     private val unknownCommands = java.util.Collections.synchronizedSet(mutableSetOf<Int>())
 
     private val decoder = VideoDecoder().apply {
@@ -82,6 +85,12 @@ class CarPlusVideoReceiver(
         dimensionsListener = object : app.qitou.bridge.aa.VideoDimensionsListener {
             override fun onVideoDimensionsChanged(width: Int, height: Int) {
                 log("[CAR+] stream ${width}x$height")
+                log(
+                    "[CAR+] STREAM vs REQUEST: sps=${width}x$height request=${requestedWidth}x$requestedHeight " +
+                        "confirmed=${confirmedWidth}x$confirmedHeight " +
+                        "swappedVsRequest=${width == requestedHeight && height == requestedWidth} " +
+                        "portrait=${height > width}",
+                )
                 if (requestedWidth > requestedHeight && width == requestedHeight && height == requestedWidth) {
                     log(
                         "[CAR+] ⚠ stream is exactly swapped vs the ${requestedWidth}x$requestedHeight request " +
@@ -175,6 +184,11 @@ class CarPlusVideoReceiver(
             0 -> CarPlusProtocol.TOUCH_DOWN
             1 -> CarPlusProtocol.TOUCH_UP
             else -> CarPlusProtocol.TOUCH_MOVE
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (action != 2 || now - lastTouchLogMs >= 2_000L) {
+            lastTouchLogMs = now
+            log("[CAR+] touch action=$action src=($x,$y) → sender")
         }
         enqueueTouch(TouchEvent(type, action, x, y))
     }
@@ -321,14 +335,20 @@ class CarPlusVideoReceiver(
                 send(CarPlusProtocol.HU_STATISTICS, CarPlusProtocol.statistics())
             }
             CarPlusProtocol.MD_INFO -> {
+                val texts = CarPlusProtocol.readTextFields(payload)
                 log(
                     "[CAR+] phone CarLife sender identified (${payload.size} bytes) " +
-                        "raw=${payload.take(96).joinToString(" ") { "%02x".format(it.toInt() and 0xff) }}",
+                        "os=${texts[1]} board=${texts[2]} brand=${texts[4]} device=${texts[7]} " +
+                        "display=${texts[8]} model=${texts[14]} release=${texts[19]} sdk=${texts[20]}",
+                )
+                log(
+                    "[CAR+] MD_INFO raw=${payload.take(96).joinToString(" ") { "%02x".format(it.toInt() and 0xff) }}",
                 )
                 send(
                     CarPlusProtocol.HU_INFO,
                     CarPlusProtocol.headUnitInfo("${requestedWidth}x$requestedHeight"),
                 )
+                log("[CAR+] HU_INFO reply display=\"${requestedWidth}x$requestedHeight\" (field 8)")
                 scheduleFeatureAndEncoder()
             }
             CarPlusProtocol.MD_AUTHEN_RESPONSE -> {
@@ -358,9 +378,17 @@ class CarPlusVideoReceiver(
                 val width = fields[1]?.toInt() ?: requestedWidth
                 val height = fields[2]?.toInt() ?: requestedHeight
                 val fps = fields[3]?.toInt()?.takeIf { it > 0 } ?: requestedFps
+                confirmedWidth = width
+                confirmedHeight = height
                 log(
                     "[CAR+] encoder confirmed ${width}x$height@$fps " +
                         "raw=${payload.take(48).joinToString(" ") { "%02x".format(it.toInt() and 0xff) }}",
+                )
+                log(
+                    "[CAR+] NEGOTIATION request=${requestedWidth}x$requestedHeight " +
+                        "wire=${if (swapRetryDone) requestedWidth else requestedHeight}x" +
+                        "${if (swapRetryDone) requestedHeight else requestedWidth} " +
+                        "confirmed=${width}x$height (field1/2 as reported)",
                 )
                 send(CarPlusProtocol.VIDEO_ENC_START, ByteArray(0))
             }
@@ -381,6 +409,10 @@ class CarPlusVideoReceiver(
             thread(name = "carplus-init", isDaemon = true) {
                 Thread.sleep(250)
                 if (!running.get() || sessionDown.get()) return@thread
+                log(
+                    "[CAR+] feature config sent: I_FRAME_INTERVAL=20 CONNECT_TYPE=5 " +
+                        "DISABLE_RESOLUTION_OPTION=1 CONTENT_ENCRYPTION=0 MEDIA_LYRIC_SUPPORT=1",
+                )
                 send(CarPlusProtocol.HU_FEATURE_CONFIG, CarPlusProtocol.featureConfig())
                 val deadline = SystemClock.elapsedRealtime() + 3_000
                 while (running.get() && !featureConfigAcked && SystemClock.elapsedRealtime() < deadline) {

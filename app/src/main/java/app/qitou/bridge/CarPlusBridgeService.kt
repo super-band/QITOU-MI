@@ -7,12 +7,14 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.graphics.drawable.Icon
+import android.hardware.display.DisplayManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.view.WindowManager
 import app.qitou.bridge.carplus.CarPlusVideoReceiver
 import app.qitou.bridge.sender.SenderRouter
 
@@ -23,6 +25,7 @@ class CarPlusBridgeService : Service() {
     private var audioPlayer: MotoAudioPlayer? = null
     private var bluetoothKeeper: BluetoothA2dpKeeper? = null
     private var videoLive = false
+    private var displayListener: DisplayManager.DisplayListener? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private val main = Handler(Looper.getMainLooper())
@@ -39,6 +42,39 @@ class CarPlusBridgeService : Service() {
         super.onCreate()
         MiniState.attach(applicationContext)
         createChannel()
+        logDeviceDiagnostics()
+    }
+
+    /**
+     * Diagnostic context for support logs: the phone's physical display (size/rotation/density)
+     * and rotation changes during the session — tells us whether the sender's video orientation
+     * follows the phone's held orientation without a screenshot round.
+     */
+    private fun logDeviceDiagnostics() {
+        val dm = getSystemService(DisplayManager::class.java)
+        val d = dm?.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+        val wm = getSystemService(WindowManager::class.java)
+        @Suppress("DEPRECATION")
+        val rotation = d?.rotation ?: wm?.defaultDisplay?.rotation ?: -1
+        MiniState.log(
+            "[PHONE] display=${d?.width}x${d?.height} rotation=$rotation " +
+                "(${rotation * 90}°) density=${d?.densityDpi} " +
+                "orientation=${resources.configuration.orientation} " +
+                "sdk=${android.os.Build.VERSION.SDK_INT} " +
+                "model=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
+        )
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId != android.view.Display.DEFAULT_DISPLAY) return
+                @Suppress("DEPRECATION")
+                val r = dm?.getDisplay(displayId)?.rotation ?: return
+                MiniState.log("[PHONE] rotation → $r (${r * 90}°)")
+            }
+        }
+        runCatching { dm?.registerDisplayListener(listener, null) }
+        displayListener = listener
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -162,6 +198,12 @@ class CarPlusBridgeService : Service() {
 
     override fun onDestroy() {
         MiniState.log("[SERVICE] stopping")
+        runCatching {
+            displayListener?.let {
+                getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(it)
+            }
+        }
+        displayListener = null
         MiniState.running = false
         MiniState.serviceActive = false
         MiniState.update("已停止", 0)

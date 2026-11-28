@@ -166,6 +166,37 @@ internal object CarPlusProtocol {
     fun touchPoint(x: Int, y: Int): ByteArray =
         varint(1, x.coerceAtLeast(0)) + varint(2, y.coerceAtLeast(0))
 
+    /** 解析 protobuf length-delimited 字符串字段（field → UTF-8 文本），用于诊断日志。 */
+    fun readTextFields(payload: ByteArray, maxFields: Int = 32): Map<Int, String> {
+        val result = LinkedHashMap<Int, String>()
+        var index = 0
+        while (index < payload.size && result.size < maxFields) {
+            val tag = readVarint(payload, index) ?: break
+            index = tag.second
+            val field = (tag.first ushr 3).toInt()
+            val wire = (tag.first and 7L).toInt()
+            when (wire) {
+                0 -> {
+                    val value = readVarint(payload, index) ?: break
+                    index = value.second
+                }
+                2 -> {
+                    val length = readVarint(payload, index) ?: break
+                    index = length.second
+                    val end = (index + length.first).coerceAtMost(payload.size.toLong()).toInt()
+                    runCatching {
+                        result[field] = String(payload, index, end - index, Charsets.UTF_8)
+                    }
+                    index = end
+                }
+                1 -> index += 8
+                5 -> index += 4
+                else -> break
+            }
+        }
+        return result
+    }
+
     fun readVarints(payload: ByteArray, maxFields: Int = 16): Map<Int, Long> {
         val result = LinkedHashMap<Int, Long>()
         var index = 0

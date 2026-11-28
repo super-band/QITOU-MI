@@ -24,7 +24,11 @@ object CarWithSender : Sender {
             log("[SENDER] 小米 CarWith（$PKG）未安装")
             return false
         }
-        log("[SENDER] installed CarWith package: $PKG")
+        val version = runCatching {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(PKG, 0).versionName
+        }.getOrNull() ?: "?"
+        log("[SENDER] installed CarWith package: $PKG version=$version")
         val ok = launchSenderApp(context, PKG, "小米 CarWith", log)
         if (ok) {
             log("[SENDER] 小米 CarWith 已拉起，请在其界面进入「CarLife → 无线连接」")

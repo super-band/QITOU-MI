@@ -124,6 +124,18 @@ class AaCompositor(private val log: (String) -> Unit) {
     private val IDLE_REDRAW_MS = 2000L
     private val PREVIEW_FRAME_INTERVAL_MS = 50L
 
+    // Content-bbox diagnostics: periodically draw the whole (uncropped) frame to a tiny pbuffer,
+    // read the pixels and log where the bright content actually sits. This replaces "send me a
+    // screenshot" debug rounds — the log alone shows the content region of the source frame.
+    private val CONTENT_ANALYSIS_INTERVAL_MS = 7_000L
+    private var lastContentAnalysisMs = 0L
+    private var contentAnalysisSurface: EGLSurface = EGL14.EGL_NO_SURFACE
+    private val analysisW = 128
+    private val analysisH = 256
+    private val analysisBuffer: java.nio.ByteBuffer =
+        java.nio.ByteBuffer.allocateDirect(128 * 256 * 4).order(ByteOrder.nativeOrder())
+    private var texMatrixLogged = false
+
     // Full-screen quad (triangle strip): pos.xy + tex.uv interleaved.
     private val quad: FloatBuffer = ByteBuffer
         .allocateDirect(4 * 4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
@@ -575,6 +587,13 @@ class AaCompositor(private val log: (String) -> Unit) {
             bikePreviewSurface == EGL14.EGL_NO_SURFACE
         ) return
         surfaceTexture.getTransformMatrix(texMatrix)
+        if (!texMatrixLogged) {
+            texMatrixLogged = true
+            log(
+                "[COMPOSITOR] SurfaceTexture texMatrix yScale=${texMatrix[5]} " +
+                    "(<0 = v-flip; crop math lives in texture space so this needs no special case)",
+            )
+        }
         val now = android.os.SystemClock.uptimeMillis()
         var drewTarget = false
         var drewPreview = false
@@ -613,8 +632,89 @@ class AaCompositor(private val log: (String) -> Unit) {
         if (drewTarget) {
             lastDrawMs = now
             pendingFrame = false
+            if (hasContent && now - lastContentAnalysisMs >= CONTENT_ANALYSIS_INTERVAL_MS) {
+                lastContentAnalysisMs = now
+                analyzeFrameContent()
+            }
         } else {
             pendingFrame = true
+        }
+    }
+
+    /**
+     * Diagnostics: draw the whole frame (crop disabled) into the tiny analysis pbuffer and compute
+     * the bounding box of "bright" pixels. Logs where the UI content actually sits inside the
+     * source frame, e.g. `content bbox src x 0..479 y 801..1279` for the Xiaomi CarWith portrait
+     * quirk (UI block in the bottom square of a black 480x1280 frame).
+     */
+    private fun analyzeFrameContent() {
+        if (contentAnalysisSurface == EGL14.EGL_NO_SURFACE || bufW == 0 || bufH == 0) return
+        try {
+            EGL14.eglMakeCurrent(eglDisplay, contentAnalysisSurface, contentAnalysisSurface, eglContext)
+            GLES20.glViewport(0, 0, analysisW, analysisH)
+            GLES20.glClearColor(0f, 0f, 0f, 1f)
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+            GLES20.glUseProgram(program)
+            // Whole frame, stretched into the pbuffer — the bbox maps back linearly per axis.
+            GLES20.glUniform2f(uCrop, 1f, 1f)
+            GLES20.glUniform2f(uCropOffset, 0f, 0f)
+            quad.position(0)
+            GLES20.glVertexAttribPointer(aPosition, 2, GLES20.GL_FLOAT, false, 16, quad)
+            GLES20.glEnableVertexAttribArray(aPosition)
+            quad.position(2)
+            GLES20.glVertexAttribPointer(aTexCoord, 2, GLES20.GL_FLOAT, false, 16, quad)
+            GLES20.glEnableVertexAttribArray(aTexCoord)
+            GLES20.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+            GLES20.glDisableVertexAttribArray(aPosition)
+            GLES20.glDisableVertexAttribArray(aTexCoord)
+
+            analysisBuffer.clear()
+            GLES20.glReadPixels(0, 0, analysisW, analysisH, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, analysisBuffer)
+
+            var minX = analysisW
+            var minY = analysisH
+            var maxX = -1
+            var maxY = -1
+            var bright = 0
+            var sum = 0
+            for (py in 0 until analysisH) {
+                // glReadPixels returns rows bottom-up; image v=0 is the top row.
+                val row = (analysisH - 1 - py) * analysisW * 4
+                for (px in 0 until analysisW) {
+                    val i = row + px * 4
+                    val luma = (analysisBuffer[i].toInt() and 0xff) * 299 / 1000 +
+                        (analysisBuffer[i + 1].toInt() and 0xff) * 587 / 1000 +
+                        (analysisBuffer[i + 2].toInt() and 0xff) * 114 / 1000
+                    sum += luma
+                    if (luma > 24) {
+                        bright++
+                        if (px < minX) minX = px
+                        if (px > maxX) maxX = px
+                        if (py < minY) minY = py
+                        if (py > maxY) maxY = py
+                    }
+                }
+            }
+            val total = analysisW * analysisH
+            if (maxX < 0) {
+                log("[AA] content bbox: frame is empty/black (analysis ${analysisW}x${analysisH})")
+                return
+            }
+            val sx0 = minX * bufW / analysisW
+            val sx1 = (maxX + 1) * bufW / analysisW
+            val sy0 = minY * bufH / analysisH
+            val sy1 = (maxY + 1) * bufH / analysisH
+            log(
+                "[AA] content bbox src x $sx0..${sx1 - 1} y $sy0..${sy1 - 1} " +
+                    "(${sx1 - sx0}x${sy1 - sy0} of ${bufW}x${bufH}) " +
+                    "bright=${bright * 100 / total}% meanLuma=${sum / total} " +
+                    "crop=$cropU,$cropV@($cropOffsetU,$cropOffsetV)",
+            )
+        } catch (error: Exception) {
+            log("[AA] content analysis failed: $error")
         }
     }
 
@@ -747,6 +847,13 @@ class AaCompositor(private val log: (String) -> Unit) {
             eglDisplay, eglConfig, intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE), 0,
         )
         EGL14.eglMakeCurrent(eglDisplay, pbuffer, pbuffer, eglContext)
+        contentAnalysisSurface = EGL14.eglCreatePbufferSurface(
+            eglDisplay,
+            eglConfig,
+            intArrayOf(EGL14.EGL_WIDTH, analysisW, EGL14.EGL_HEIGHT, analysisH, EGL14.EGL_NONE),
+            0,
+        )
+        log("[COMPOSITOR] content-analysis pbuffer ${analysisW}x${analysisH} ready=${contentAnalysisSurface != EGL14.EGL_NO_SURFACE}")
     }
 
     private fun initGl() {
