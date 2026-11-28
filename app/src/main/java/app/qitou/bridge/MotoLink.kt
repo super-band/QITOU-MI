@@ -157,6 +157,10 @@ class MotoLink(
                         try {
                             if (port == PORT_CTRL) controlLoop(socket)
                             else mediaLoop(socket)
+                        } catch (error: Exception) {
+                            // Connection drops (SocketException etc.) are normal here — the bike
+                            // powered off, rode out of range or the session restarted. Log quietly.
+                            if (running.get()) log("[PXC] :$port disconnected: ${error.message}")
                         } finally {
                             clients.remove(socket)
                             live.decrementAndGet()

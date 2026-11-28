@@ -75,12 +75,16 @@ class AaCompositor(private val log: (String) -> Unit) {
     private var aTexCoord = 0
     private var uTexMatrix = 0
     private var uCrop = 0
+    private var uCropOffset = 0
     private var textureId = 0
 
-    // Fraction of the coded AA frame that holds content (1.0 = whole frame). <1 when match-panel-aspect
-    // margins are advertised: AA draws its UI into a sub-rect, so we sample only that region.
+    // Region of the coded AA frame that holds content, in texture/image space (v=0 is the image
+    // top). Size 1,1 = whole frame (default). <1 when match-panel-aspect margins are advertised or
+    // when a portrait stream only has content in its bottom square (Xiaomi CarWith quirk).
     @Volatile private var cropU = 1f
     @Volatile private var cropV = 1f
+    @Volatile private var cropOffsetU = 0f
+    @Volatile private var cropOffsetV = 0f
     private lateinit var surfaceTexture: SurfaceTexture
 
     /** Where the AA decoder renders. Valid after [start]. */
@@ -149,6 +153,8 @@ class AaCompositor(private val log: (String) -> Unit) {
                 bufH = bufferH
                 cropU = 1f
                 cropV = 1f
+                cropOffsetU = 0f
+                cropOffsetV = 0f
                 surfaceTexture = SurfaceTexture(textureId)
                 surfaceTexture.setDefaultBufferSize(bufW, bufH)
                 surfaceTexture.setOnFrameAvailableListener({ handler.post { onFrame() } }, handler)
@@ -410,8 +416,35 @@ class AaCompositor(private val log: (String) -> Unit) {
         val rx = cx - vpX
         val ry = cy - vpY
         if (rx < 0 || ry < 0 || rx >= vpW || ry >= vpH) return null
-        val sx = (rx.toLong() * srcW / vpW).toInt().coerceIn(0, srcW - 1)
-        val sy = (ry.toLong() * srcH / vpH).toInt().coerceIn(0, srcH - 1)
+        val sx = (cropOffsetU * srcW + rx * (srcW * cropU) / vpW).toInt().coerceIn(0, srcW - 1)
+        val sy = (cropOffsetV * srcH + ry * (srcH * cropV) / vpH).toInt().coerceIn(0, srcH - 1)
+        return sx to sy
+    }
+
+    /**
+     * Map a point on the phone preview ([viewW]x[viewH], 1:1 with the preview surface) to source
+     * coordinates. Inverse of the preview fit rect including the crop-region offset, so touches
+     * land correctly when only a sub-rectangle of the frame is displayed.
+     */
+    fun mapPreviewToSource(x: Float, y: Float, viewW: Int, viewH: Int): Pair<Int, Int>? {
+        if (viewW <= 0 || viewH <= 0 || bufW == 0 || bufH == 0) return null
+        val effW = bufW * cropU
+        val effH = bufH * cropV
+        if (effW <= 0f || effH <= 0f) return null
+        val srcAspect = effW / effH
+        val viewAspect = viewW.toFloat() / viewH
+        val dw: Float
+        val dh: Float
+        if (srcAspect < viewAspect) {
+            dh = viewH.toFloat(); dw = dh * srcAspect
+        } else {
+            dw = viewW.toFloat(); dh = dw / srcAspect
+        }
+        val left = (viewW - dw) / 2f
+        val top = (viewH - dh) / 2f
+        if (x < left || x >= left + dw || y < top || y >= top + dh) return null
+        val sx = (cropOffsetU * bufW + (x - left) * effW / dw).toInt().coerceIn(0, bufW - 1)
+        val sy = (cropOffsetV * bufH + (y - top) * effH / dh).toInt().coerceIn(0, bufH - 1)
         return sx to sy
     }
 
@@ -424,7 +457,9 @@ class AaCompositor(private val log: (String) -> Unit) {
      */
     private fun computeViewport() {
         if (canvasW == 0 || canvasH == 0 || srcW == 0 || srcH == 0) return
-        val rect = computeScreenViewport(canvasW, canvasH, srcW, srcH, fitMode, safeInsets)
+        val effW = Math.round(srcW * cropU).coerceAtLeast(1)
+        val effH = Math.round(srcH * cropV).coerceAtLeast(1)
+        val rect = computeScreenViewport(canvasW, canvasH, effW, effH, fitMode, safeInsets)
         vpX = rect.x
         vpY = rect.y
         vpW = rect.width
@@ -440,8 +475,33 @@ class AaCompositor(private val log: (String) -> Unit) {
         handler.post {
             cropU = cu.coerceIn(0.05f, 1f)
             cropV = cv.coerceIn(0.05f, 1f)
+            cropOffsetU = (1f - cropU) / 2f
+            cropOffsetV = (1f - cropV) / 2f
             computePreviewRect()
+            computeViewport()
             if (hasContent) safeDrawFrame("source crop")
+        }
+    }
+
+    /**
+     * Sample an arbitrary sub-rectangle of the coded frame. Fractions are in image space with the
+     * origin at the frame's top-left (v=0 top). Used to zoom onto the content block when a sender
+     * pads its UI inside a larger black frame (Xiaomi CarWith portrait quirk). Reset with (0,0,1,1).
+     */
+    fun setSourceCropRegion(x0: Float, y0: Float, x1: Float, y1: Float) {
+        handler.post {
+            val rx0 = x0.coerceIn(0f, 1f)
+            val ry0 = y0.coerceIn(0f, 1f)
+            val rx1 = x1.coerceIn(rx0 + 0.05f, 1f)
+            val ry1 = y1.coerceIn(ry0 + 0.05f, 1f)
+            cropU = rx1 - rx0
+            cropV = ry1 - ry0
+            cropOffsetU = rx0
+            cropOffsetV = ry0
+            computePreviewRect()
+            computeViewport()
+            log("[COMPOSITOR] source crop region → ($rx0,$ry0)-($rx1,$ry1)")
+            if (hasContent) safeDrawFrame("source crop region")
         }
     }
 
@@ -625,6 +685,7 @@ class AaCompositor(private val log: (String) -> Unit) {
 
         GLES20.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
         GLES20.glUniform2f(uCrop, cropU, cropV)
+        GLES20.glUniform2f(uCropOffset, cropOffsetU, cropOffsetV)
 
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
@@ -692,17 +753,17 @@ class AaCompositor(private val log: (String) -> Unit) {
         val vs = """
             uniform mat4 uTexMatrix;
             uniform vec2 uCrop;
+            uniform vec2 uCropOffset;
             attribute vec4 aPosition;
             attribute vec4 aTexCoord;
             varying vec2 vTexCoord;
             void main() {
                 gl_Position = aPosition;
-                // AA splits margin_width/height evenly (DHU: marginwidth 280 → 140+140), so its UI is
-                // CENTERED inside the coded frame. Sample the centered usable region on both axes; the
-                // (1-crop)*0.5 offset is symmetric, so SurfaceTexture's y-flip needs no special case.
-                float u = (1.0 - uCrop.x) * 0.5 + aTexCoord.x * uCrop.x;
-                float v = (1.0 - uCrop.y) * 0.5 + aTexCoord.y * uCrop.y;
-                vTexCoord = (uTexMatrix * vec4(u, v, aTexCoord.z, aTexCoord.w)).xy;
+                // Sample a sub-region of the frame. The crop is applied AFTER the SurfaceTexture
+                // transform, so uCropOffset/uCrop live in texture space (v=0 = image top) and the
+                // y-flip inside uTexMatrix needs no special case.
+                vec2 t = (uTexMatrix * vec4(aTexCoord.x, aTexCoord.y, 0.0, 1.0)).xy;
+                vTexCoord = uCropOffset + t * uCrop;
             }
         """.trimIndent()
         val fs = """
@@ -717,6 +778,7 @@ class AaCompositor(private val log: (String) -> Unit) {
         aTexCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
         uTexMatrix = GLES20.glGetUniformLocation(program, "uTexMatrix")
         uCrop = GLES20.glGetUniformLocation(program, "uCrop")
+        uCropOffset = GLES20.glGetUniformLocation(program, "uCropOffset")
         Matrix.setIdentityM(texMatrix, 0)
 
         val ids = IntArray(1)

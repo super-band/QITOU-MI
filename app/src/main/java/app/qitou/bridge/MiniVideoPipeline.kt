@@ -43,9 +43,25 @@ class MiniVideoPipeline(
         sourceWidth = width
         sourceHeight = height
         compositor.updateCaptureSize(width, height)
+        if (height > width) {
+            // Portrait stream: Xiaomi CarWith pads its UI into a bottom square of a tall black
+            // frame — crop onto that block so it renders as large as possible on the bike.
+            val k = width.toFloat() / height
+            compositor.setSourceCropRegion(0f, 1f - k, 1f, 1f)
+        } else {
+            compositor.setSourceCropRegion(0f, 0f, 1f, 1f)
+        }
         MiniState.setSourceSize(width, height)
         log("[MINI] source size updated to ${width}x$height")
     }
+
+    fun setSourceCropRegion(x0: Float, y0: Float, x1: Float, y1: Float) {
+        compositor.setSourceCropRegion(x0, y0, x1, y1)
+    }
+
+    /** Map a phone-preview touch point to source-pixel coordinates (crop aware). */
+    fun mapPreviewToSource(x: Float, y: Float, viewW: Int, viewH: Int): Pair<Int, Int>? =
+        compositor.mapPreviewToSource(x, y, viewW, viewH)
 
     @Synchronized
     fun configureBikeCanvas(

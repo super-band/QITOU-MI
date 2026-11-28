@@ -393,44 +393,42 @@ class CarPlusVideoReceiver(
 
     private fun sendEncoderInit() {
         if (!running.get() || sessionDown.get()) return
-        log("[CAR+] requesting ${requestedWidth}x$requestedHeight@$requestedFps video")
-        send(
-            CarPlusProtocol.HU_VIDEO_ENC_INIT,
-            CarPlusProtocol.videoEncoderInfo(
-                requestedWidth,
-                requestedHeight,
-                requestedFps,
-                // 关键：needAdapterScreen=1 让引擎/厂商层按车机画布做等比适配并采用本请求
-                // 尺寸编码；只发 width/height 时小米 CarWith 的厂商层按手机方向自行定尺寸
-                // （实测回 480x1280 竖屏流）。saveArea 暂不声明——仪表条安全区由本地
-                // CanvasInsets 处理，避免双重避让把画面缩得更小。
-                needAdapterScreen = true,
-                saveArea = null,
-                drawUIOutsideSafeArea = false,
-            ),
+        log(
+            "[CAR+] requesting ${requestedWidth}x$requestedHeight@$requestedFps video " +
+                "(98311 wire fields ${requestedHeight}x${requestedWidth} — Xiaomi vendor layer reads W/H reversed)",
+        )
+        send(CarPlusProtocol.HU_VIDEO_ENC_INIT, buildEncoderInfo(swapped = true))
+    }
+
+    /**
+     * 构造 98311 载荷。[swapped]=true 时按「field1=height, field2=width」反序写入——
+     * 小米 CarWith 实测把 98311 的宽高反读（请求 1280x480 → 实流 480x1280、确认回包
+     * 也按高宽报告），反序写入让它的虚拟屏/编码器落回 1280x480 横屏。
+     */
+    private fun buildEncoderInfo(swapped: Boolean): ByteArray {
+        val w = if (swapped) requestedHeight else requestedWidth
+        val h = if (swapped) requestedWidth else requestedHeight
+        return CarPlusProtocol.videoEncoderInfo(
+            w,
+            h,
+            requestedFps,
+            needAdapterScreen = true,
+            saveArea = null,
+            drawUIOutsideSafeArea = false,
         )
     }
 
     /**
-     * 流尺寸与请求宽高完全互换（如请求 1280x480 却收 480x1280）时，用互换后的尺寸
-     * 重发一次 98311 + 98313。若发送端是按「宽高反读」的厂商适配层，重发后即得横屏流。
+     * 流尺寸与期望宽高完全互换（如期望 1280x480 却收 480x1280）时，用正序字段
+     * 重发一次 98311 + 98313（反序补偿已由首次请求覆盖，这里是反向兜底）。
      * 只重试一次，避免与发送端来回拉锯。
      */
     private fun retrySwappedEncoderInit() {
         if (swapRetryDone) return
         if (!running.get() || sessionDown.get()) return
         swapRetryDone = true
-        send(
-            CarPlusProtocol.HU_VIDEO_ENC_INIT,
-            CarPlusProtocol.videoEncoderInfo(
-                requestedHeight,
-                requestedWidth,
-                requestedFps,
-                needAdapterScreen = true,
-                saveArea = null,
-                drawUIOutsideSafeArea = false,
-            ),
-        )
+        log("[CAR+] retrying 98311 with normal field order (swapped compensation did not take)")
+        send(CarPlusProtocol.HU_VIDEO_ENC_INIT, buildEncoderInfo(swapped = false))
         send(CarPlusProtocol.VIDEO_ENC_START, ByteArray(0))
     }
 

@@ -193,27 +193,8 @@ class ControlActivity : Activity() {
         return true
     }
 
-    private fun mapPoint(x: Float, y: Float, w: Int, h: Int): Pair<Int, Int>? {
-        if (w <= 0 || h <= 0) return null
-        val srcW = MiniRuntime.pipeline?.streamWidth ?: 1280
-        val srcH = MiniRuntime.pipeline?.streamHeight ?: 480
-        val sourceAspect = srcW.toFloat() / srcH
-        val viewAspect = w.toFloat() / h
-        val drawW: Float
-        val drawH: Float
-        if (sourceAspect > viewAspect) {
-            drawW = w.toFloat()
-            drawH = drawW / sourceAspect
-        } else {
-            drawH = h.toFloat()
-            drawW = drawH * sourceAspect
-        }
-        val left = (w - drawW) / 2f
-        val top = (h - drawH) / 2f
-        if (x < left || x >= left + drawW || y < top || y >= top + drawH) return null
-        return (((x - left) * srcW / drawW).toInt().coerceIn(0, srcW - 1)) to
-            (((y - top) * srcH / drawH).toInt().coerceIn(0, srcH - 1))
-    }
+    private fun mapPoint(x: Float, y: Float, w: Int, h: Int): Pair<Int, Int>? =
+        MiniRuntime.pipeline?.mapPreviewToSource(x, y, w, h)
 
     private fun renderFps() {
         if (!::fps.isInitialized) return
