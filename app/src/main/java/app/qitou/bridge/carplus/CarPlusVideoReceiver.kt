@@ -14,7 +14,9 @@ import app.qitou.bridge.sender.SenderRouter
 import java.io.DataInputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.Inet4Address
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.Socket
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
@@ -64,6 +66,7 @@ class CarPlusVideoReceiver(
     @Volatile private var featureConfigAcked = false
     @Volatile private var starterScheduled = false
     @Volatile private var readyFired = false
+    @Volatile private var everConnected = false
     @Volatile private var lastFrameAt = 0L
     @Volatile private var lastFrameNudgeAt = 0L
     @Volatile private var lastTouchProbeAt = 0L
@@ -137,6 +140,10 @@ class CarPlusVideoReceiver(
                             "请安装小米 CarWith（com.miui.carlink）或百度 CarLife+",
                             Stage.ERROR,
                         )
+                        running.get() && !everConnected -> MiniState.setCar(
+                            "未发现 CarLife 端口，${SenderRouter.wirelessHint(context)}",
+                            Stage.ERROR,
+                        )
                         running.get() -> MiniState.setCar("CarLife 连接中断，正在重连", Stage.ERROR)
                         else -> MiniState.setCar("已停止", Stage.OFF)
                     }
@@ -202,16 +209,23 @@ class CarPlusVideoReceiver(
         starterScheduled = false
         readyFired = false
         videoDead = false
-        log("[CAR+] probing CarLife sender loopback ports…")
+        val addrs = senderAddresses()
+        log("[CAR+] probing CarLife sender ports on ${addrs.joinToString("/")} …")
         MiniState.setCar("正在寻找 CarLife 发送端", Stage.WAIT)
 
         for (port in CarPlusProtocol.PORTS) {
-            try {
-                val socket = connectLoopback(port)
-                sockets[port] = socket
-            } catch (error: Exception) {
-                if (port == CarPlusProtocol.PORT_CMD) {
-                    log("[CAR+] CarLife :$port not ready (${error.javaClass.simpleName})")
+            for (addr in addrs) {
+                try {
+                    val socket = connectSender(addr, port)
+                    sockets[port] = socket
+                    if (port == CarPlusProtocol.PORT_CMD) {
+                        log("[CAR+] CarLife sender reachable at ${addr}:${port}")
+                    }
+                    break
+                } catch (error: Exception) {
+                    if (port == CarPlusProtocol.PORT_CMD) {
+                        log("[CAR+] CarLife ${addr}:${port} not ready (${error.javaClass.simpleName})")
+                    }
                 }
             }
         }
@@ -219,6 +233,7 @@ class CarPlusVideoReceiver(
         val cmd = sockets[CarPlusProtocol.PORT_CMD] ?: return false
         cmdOut = cmd.getOutputStream()
         touchOut = sockets[CarPlusProtocol.PORT_TOUCH]?.getOutputStream()
+        everConnected = true
         log("[CAR+] connected to CarLife sender engine")
         MiniState.setCar("CarLife 发送端已连接，正在握手", Stage.WAIT)
 
@@ -592,17 +607,34 @@ class CarPlusVideoReceiver(
     }
 
     /**
-     * Bike Wi-Fi is bound to the whole process after video starts. Loopback must be
-     * reached without that binding, matching the workaround used by the AA receiver.
+     * 发送端探测目标：回环 + 本机所有 IPv4。CarWith 等发送端可能只把协议服务绑在
+     * Wi-Fi 网卡地址上（真实车机走网络连过来），只探 127.0.0.1 会永远探空。
+     * Bike Wi-Fi is bound to the whole process after video starts; probing must
+     * happen without that binding, matching the AA receiver workaround.
      */
-    private fun connectLoopback(port: Int): Socket {
+    private fun senderAddresses(): List<String> {
+        val addrs = linkedSetOf("127.0.0.1")
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return addrs.toList()
+            for (ni in java.util.Collections.list(interfaces)) {
+                if (!ni.isUp || ni.isLoopback) continue
+                for (ia in java.util.Collections.list(ni.inetAddresses)) {
+                    if (ia is Inet4Address) addrs.add(ia.hostAddress)
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return addrs.toList()
+    }
+
+    private fun connectSender(address: String, port: Int): Socket {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val bound = try { cm?.boundNetworkForProcess } catch (_: Exception) { null }
         try {
             if (bound != null) try { cm?.bindProcessToNetwork(null) } catch (_: Exception) {}
             return Socket().apply {
                 tcpNoDelay = true
-                connect(InetSocketAddress("127.0.0.1", port), CONNECT_TIMEOUT_MS)
+                connect(InetSocketAddress(address, port), CONNECT_TIMEOUT_MS)
             }
         } finally {
             if (bound != null) try { cm?.bindProcessToNetwork(bound) } catch (_: Exception) {}

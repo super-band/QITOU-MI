@@ -69,14 +69,20 @@ internal fun launchSenderApp(
     } catch (_: Exception) {
         emptyList()
     }
+    log(
+        "[SENDER] $label activities: " +
+            activities.take(24).joinToString {
+                "${it.name}${if (it.exported) "" else "(private)"}"
+            },
+    )
     val candidates = activities
         .filter { it.exported }
         .map { info ->
             val name = info.name.lowercase()
             var score = 0
+            if ("carlife" in name) score += 120
             if ("wireless" in name || "wlan" in name || "wifi" in name) score += 100
             if ("connect" in name) score += 80
-            if ("carlife" in name) score += 60
             if ("guide" in name) score += 30
             if ("main" in name || "home" in name) score += 20
             info to score
