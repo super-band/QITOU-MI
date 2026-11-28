@@ -58,7 +58,7 @@ class CarPlusBridgeService : Service() {
         val rotation = d?.rotation ?: wm?.defaultDisplay?.rotation ?: -1
         MiniState.log(
             "[PHONE] display=${d?.width}x${d?.height} rotation=$rotation " +
-                "(${rotation * 90}°) density=${d?.densityDpi} " +
+                "(${rotation * 90}°) density=${resources.displayMetrics.densityDpi} " +
                 "orientation=${resources.configuration.orientation} " +
                 "sdk=${android.os.Build.VERSION.SDK_INT} " +
                 "model=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
