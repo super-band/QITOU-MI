@@ -2,6 +2,9 @@ package app.qitou.bridge
 
 import android.content.Context
 import java.io.File
+import java.io.BufferedOutputStream
+import java.io.FileOutputStream
+import java.nio.charset.StandardCharsets
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.ArrayDeque
@@ -9,6 +12,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 enum class Stage {
     OFF,
@@ -24,11 +29,28 @@ enum class Stage {
 object MiniState {
     private const val MAX_LOG_LINES = 900
     private const val MAX_LOG_BYTES = 1_500_000L
+    private const val ACTIVE_LOG_NAME = "qitou.log"
+    private const val FIRST_ARCHIVE_NAME = "qitou.1.log"
+    private const val SECOND_ARCHIVE_NAME = "qitou.2.log"
+    private const val SUPPORT_ARCHIVE_NAME = "QITOU-support.zip"
+    private val LOG_FILE_NAMES = listOf(
+        ACTIVE_LOG_NAME,
+        FIRST_ARCHIVE_NAME,
+        SECOND_ARCHIVE_NAME,
+    )
 
     @Volatile var running: Boolean = false
     @Volatile var serviceActive: Boolean = false
+    @Volatile var localOnly: Boolean = false
     @Volatile var status: String = "未启动"
     @Volatile var framesPerSecond: Int = 0
+    @Volatile var sourceWidth: Int = 1280
+    @Volatile var sourceHeight: Int = 480
+    @Volatile var outputWidth: Int = 800
+    @Volatile var outputHeight: Int = 386
+    @Volatile var outputFit: String = "完整显示"
+    @Volatile var decoderCodec: String = "未启动"
+    @Volatile var encoderCodec: String = "未启动"
     @Volatile var lastLog: String = ""
     @Volatile var vehicleName: String = ""
     @Volatile var wifiText: String = "未连接"
@@ -45,21 +67,27 @@ object MiniState {
 
     private val logs = ArrayDeque<String>(MAX_LOG_LINES)
     private val logLock = Any()
+    private val logFileLock = Any()
     private val timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss.SSS", Locale.US)
     private val logExecutor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "qitou-log-writer").apply { isDaemon = true }
     }
     @Volatile private var appContext: Context? = null
+    @Volatile private var logDirectory: File? = null
     @Volatile private var logFile: File? = null
 
     fun attach(context: Context) {
         val app = context.applicationContext
         if (appContext === app && logFile != null) return
-        synchronized(logLock) {
+        synchronized(logFileLock) {
+            if (appContext === app && logFile != null) return
+            val directory = app.filesDir
+            val active = File(directory, ACTIVE_LOG_NAME)
             appContext = app
-            logFile = File(app.filesDir, "qitou.log")
-            if ((logFile?.length() ?: 0L) > MAX_LOG_BYTES) {
-                runCatching { logFile?.delete() }
+            logDirectory = directory
+            logFile = active
+            if (active.length() > MAX_LOG_BYTES) {
+                runCatching { rotateLogsLocked(directory) }
             }
         }
     }
@@ -73,6 +101,35 @@ object MiniState {
 
     fun setVehicle(name: String) {
         vehicleName = name
+        listener?.invoke()
+    }
+
+    fun setSourceSize(width: Int, height: Int) {
+        if (width > 0) sourceWidth = width
+        if (height > 0) sourceHeight = height
+        listener?.invoke()
+    }
+
+    fun setOutputSize(width: Int, height: Int, fit: String) {
+        if (width > 0) outputWidth = width
+        if (height > 0) outputHeight = height
+        outputFit = fit
+        listener?.invoke()
+    }
+
+    fun updateDecoderCodec(codec: String) {
+        decoderCodec = codec
+        listener?.invoke()
+    }
+
+    fun updateEncoderCodec(codec: String) {
+        encoderCodec = codec
+        listener?.invoke()
+    }
+
+    fun resetVideoCodecs() {
+        decoderCodec = "未启动"
+        encoderCodec = "未启动"
         listener?.invoke()
     }
 
@@ -121,7 +178,7 @@ object MiniState {
     }
 
     fun log(line: String) {
-        val safe = redact(line)
+        val safe = LogRedactor.redact(line)
         lastLog = safe
         val stamped = "${timeFormat.format(LocalTime.now())}  $safe"
         android.util.Log.i("QITOU", safe)
@@ -130,61 +187,122 @@ object MiniState {
             logs.addLast(stamped)
         }
         logExecutor.execute {
-            val file = logFile ?: return@execute
-            runCatching {
-                if (file.length() > MAX_LOG_BYTES) file.writeText("")
-                file.appendText(stamped + "\n")
-            }
+            runCatching { appendLogLocked(stamped + "\n") }
         }
     }
 
     fun recentLogs(): List<String> = synchronized(logLock) { logs.toList() }
 
     /**
-     * Writes a redacted support log into the app cache and returns it for FileProvider sharing.
+     * Writes a redacted ZIP containing every retained log and the latest crash report.
      */
     fun exportLog(context: Context): File {
         attach(context)
+        AudioVolumeStore.attach(context)
         runCatching { logExecutor.submit {}.get(2, TimeUnit.SECONDS) }
         val shareDir = File(context.cacheDir, "shared").apply { mkdirs() }
-        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val out = File(shareDir, "QITOU-support-$stamp.log")
-        val header = buildString {
+        File(shareDir, "QITOU-support.log").delete()
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+            .format(Date())
+        val out = File(shareDir, "QITOU-support-$stamp.zip")
+        val summary = buildString {
             appendLine("${Brand.CHINESE_NAME} ${Brand.LATIN_NAME} diagnostic log")
             appendLine("time=${Date()}")
             appendLine("android=${android.os.Build.VERSION.RELEASE}")
             appendLine("device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+            runCatching {
+                @Suppress("DEPRECATION")
+                val info = context.packageManager.getPackageInfo(context.packageName, 0)
+                appendLine("appVersion=${info.versionName} (${info.longVersionCode})")
+            }
             appendLine("vehicle=${vehicleName.ifBlank { "未选择" }}")
             appendLine("wifi=${wifiText}")
-            appendLine("carlife=${carText}")
+            appendLine("carplus=${carText}")
             appendLine("pxc=${pxcText}")
             appendLine("audio=${audioText}")
             appendLine("bluetooth=${bluetoothText}")
             appendLine("fps=$framesPerSecond")
+            appendLine("source=$sourceWidth x $sourceHeight")
+            appendLine("output=$outputWidth x $outputHeight")
+            appendLine("fit=$outputFit")
+            appendLine("decoderCodec=$decoderCodec")
+            appendLine("encoderCodec=$encoderCodec")
+            appendLine(
+                "sourceRequest=${VehicleDisplayProfileStore.load(context).sourceRequest.label}",
+            )
+            val audio = AudioVolumeStore.current
+            appendLine("mediaVolume=${audio.mediaPercent}%")
+            appendLine("navigationVolume=${audio.navigationPercent}%")
+            appendLine("autoDuck=${audio.duckMediaDuringNavigation}")
+            appendLine("audioRoute=${audio.outputRoute.storageValue}")
             appendLine("status=$status")
             appendLine("----------------------------------------")
         }
-        val persisted = synchronized(logLock) {
-            runCatching {
-                logFile?.takeIf { it.exists() }?.readText()?.takeLast(600_000)
-            }.getOrNull()
+
+        synchronized(logFileLock) {
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(out))).use { zip ->
+                writeTextEntry(zip, "summary.txt", LogRedactor.redact(summary))
+                var foundLog = false
+                for (name in LOG_FILE_NAMES) {
+                    val file = File(context.filesDir, name)
+                    if (file.isFile && file.length() > 0) {
+                        copyFileEntry(zip, "logs/$name", file)
+                        foundLog = true
+                    }
+                }
+                if (!foundLog) {
+                    val memory = recentLogs().joinToString("\n", postfix = "\n")
+                    writeTextEntry(zip, "logs/session-memory.log", LogRedactor.redact(memory))
+                }
+                val crash = File(context.filesDir, CrashLogger.FILE_NAME)
+                if (crash.isFile && crash.length() > 0) {
+                    copyFileEntry(zip, CrashLogger.FILE_NAME, crash)
+                }
+            }
         }
-        val current = persisted?.takeIf { it.isNotBlank() }
-            ?: recentLogs().joinToString("\n", postfix = "\n")
-        out.writeText(redact(header + current))
         return out
     }
 
-    private fun redact(input: String): String {
-        var text = input
-        text = text.replace(
-            Regex("""(?i)(pwd|password|passphrase|psk)\s*[=:]\s*([^&#\s]+)"""),
-            "$1=***",
-        )
-        text = text.replace(
-            Regex("""(?i)(Wifi=)[^&#\s]+#([^&#\s]+)#"""),
-            "$1***#***#",
-        )
-        return text
+    private fun appendLogLocked(line: String) {
+        val directory = logDirectory ?: return
+        val payload = line.toByteArray(StandardCharsets.UTF_8)
+        val active = File(directory, ACTIVE_LOG_NAME)
+        synchronized(logFileLock) {
+            if (active.length() + payload.size > MAX_LOG_BYTES) {
+                rotateLogsLocked(directory)
+            }
+            FileOutputStream(active, true).use { it.write(payload) }
+        }
     }
+
+    private fun rotateLogsLocked(directory: File) {
+        val active = File(directory, ACTIVE_LOG_NAME)
+        if (!active.isFile || active.length() == 0L) return
+        val first = File(directory, FIRST_ARCHIVE_NAME)
+        val second = File(directory, SECOND_ARCHIVE_NAME)
+        second.delete()
+        if (first.exists()) moveOrCopy(first, second)
+        moveOrCopy(active, first)
+    }
+
+    private fun moveOrCopy(source: File, target: File) {
+        target.delete()
+        if (!source.renameTo(target)) {
+            source.copyTo(target, overwrite = true)
+            source.delete()
+        }
+    }
+
+    private fun copyFileEntry(zip: ZipOutputStream, name: String, file: File) {
+        zip.putNextEntry(ZipEntry(name))
+        file.inputStream().use { input -> input.copyTo(zip) }
+        zip.closeEntry()
+    }
+
+    private fun writeTextEntry(zip: ZipOutputStream, name: String, text: String) {
+        zip.putNextEntry(ZipEntry(name))
+        zip.write(text.toByteArray(StandardCharsets.UTF_8))
+        zip.closeEntry()
+    }
+
 }

@@ -130,7 +130,12 @@ class CarPlusBridgeService : Service() {
             onReady = {
                 if (!videoLive) {
                     videoLive = true
-                    pipeline?.configureBikeCanvas(800, 384)
+                    pipeline?.configureBikeCanvas(
+                        800,
+                        384,
+                        ScreenFit.FIT,
+                        CanvasInsets(bottom = 80),
+                    )
                     if (motoLink?.isRunning != true) {
                         runCatching { motoLink?.stop() }
                         motoLink = MotoLink(applicationContext, pipe, MiniState::log).also { it.start() }

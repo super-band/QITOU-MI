@@ -354,7 +354,12 @@ class MotoLink(
                 val width = if (body.size >= 2) b.getShort(0).toInt() and 0xffff else 800
                 val height = if (body.size >= 4) b.getShort(2).toInt() and 0xffff else 384
                 captureSeen = true
-                pipeline.configureBikeCanvas(800, 384)
+                pipeline.configureBikeCanvas(
+                    800,
+                    384,
+                    ScreenFit.FIT,
+                    CanvasInsets(bottom = 80),
+                )
                 val reply = ByteBuffer.allocate(9).order(ByteOrder.LITTLE_ENDIAN)
                 reply.putInt(0, 2)
                 reply.putShort(4, width.toShort())
