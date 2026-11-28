@@ -67,6 +67,7 @@ class CarPlusVideoReceiver(
     @Volatile private var starterScheduled = false
     @Volatile private var readyFired = false
     @Volatile private var everConnected = false
+    @Volatile private var senderAddr: String? = null
     @Volatile private var lastFrameAt = 0L
     @Volatile private var lastFrameNudgeAt = 0L
     @Volatile private var lastTouchProbeAt = 0L
@@ -219,6 +220,7 @@ class CarPlusVideoReceiver(
                     val socket = connectSender(addr, port)
                     sockets[port] = socket
                     if (port == CarPlusProtocol.PORT_CMD) {
+                        senderAddr = addr
                         log("[CAR+] CarLife sender reachable at ${addr}:${port}")
                     }
                     break
@@ -469,7 +471,7 @@ class CarPlusVideoReceiver(
             val old = sockets.remove(CarPlusProtocol.PORT_VIDEO)
             try { old?.close() } catch (_: Exception) {}
             try {
-                val socket = connectLoopback(CarPlusProtocol.PORT_VIDEO)
+                val socket = connectAny(CarPlusProtocol.PORT_VIDEO)
                 sockets[CarPlusProtocol.PORT_VIDEO] = socket
                 thread(name = "carplus-video", isDaemon = true) { readVideo(socket) }
                 log("[CAR+] video channel reconnected")
@@ -494,7 +496,7 @@ class CarPlusVideoReceiver(
         if (current != null && !current.isClosed) return
         runCatching { current?.close() }
         try {
-            val socket = connectLoopback(port)
+            val socket = connectAny(port)
             sockets[port] = socket
             thread(name = "carplus-audio-$label", isDaemon = true) {
                 drainAudio(socket, label)
@@ -514,7 +516,7 @@ class CarPlusVideoReceiver(
                 if (now - lastTouchProbeAt >= 1_000L) {
                     lastTouchProbeAt = now
                     try {
-                        val socket = connectLoopback(CarPlusProtocol.PORT_TOUCH)
+                        val socket = connectAny(CarPlusProtocol.PORT_TOUCH)
                         sockets[CarPlusProtocol.PORT_TOUCH] = socket
                         touchOut = socket.getOutputStream()
                         touchMissLogged = false
@@ -639,6 +641,22 @@ class CarPlusVideoReceiver(
         } finally {
             if (bound != null) try { cm?.bindProcessToNetwork(bound) } catch (_: Exception) {}
         }
+    }
+
+    /** 单通道重连：优先用握手成功的那个地址，再退回全量探测。 */
+    private fun connectAny(port: Int): Socket {
+        val tried = linkedSetOf<String>()
+        senderAddr?.let { tried.add(it) }
+        tried.addAll(senderAddresses())
+        var last: Exception? = null
+        for (addr in tried) {
+            try {
+                return connectSender(addr, port)
+            } catch (error: Exception) {
+                last = error
+            }
+        }
+        throw last ?: IllegalStateException("no sender address to probe")
     }
 
     private fun readU32(data: ByteArray, offset: Int): Int =
